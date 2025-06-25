@@ -6,35 +6,45 @@ __pycache__/
 .Python
 env/
 venv/
+ENV/
+.venv
 .env
 
 # Data
 data/raw/*
 data/processed/*
-!data/*/.gitkeep
+!data/**/.gitkeep
 *.h5
 *.pkl
 *.npy
+*.npz
 
 # Models
 *.pth
+*.pt
 *.onnx
 *.trt
+*.safetensors
 data/models/*
 !data/models/.gitkeep
 
 # Logs
 logs/
 *.log
+wandb/
+outputs/
 
 # IDE
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Unity
 unity_project/[Ll]ibrary/
@@ -44,6 +54,32 @@ unity_project/[Bb]uild/
 unity_project/[Bb]uilds/
 unity_project/[Ll]ogs/
 unity_project/[Uu]ser[Ss]ettings/
+*.pidb
+*.suo
+*.user
+*.userprefs
+*.unityproj
+*.booproj
 
 # Jupyter
 .ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+*.cover
+.hypothesis/
+
+# Package files
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~.nib

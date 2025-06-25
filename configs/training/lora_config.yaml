@@ -1,0 +1,43 @@
+# LoRA Training Configuration
+
+# Model
+pretrained_model_name: "runwayml/stable-diffusion-v1-5"
+
+# LoRA parameters
+lora_rank: 8
+lora_alpha: 32
+lora_dropout: 0.1
+target_modules:
+  - "to_k"
+  - "to_q"
+  - "to_v"
+  - "to_out.0"
+
+# Training
+train_batch_size: 1
+gradient_accumulation_steps: 4
+num_train_epochs: 10
+max_train_steps: 1000
+learning_rate: 1e-4
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_epsilon: 1e-8
+adam_weight_decay: 0.01
+
+# Data
+data_dir: "data"
+resolution: 512
+center_crop: false
+random_flip: true
+
+# Optimization
+mixed_precision: "fp16"
+gradient_checkpointing: true
+use_8bit_adam: true
+
+# Logging
+output_dir: "data/models"
+logging_dir: "logs"
+save_steps: 100
+validation_steps: 50
+log_with: "tensorboard"

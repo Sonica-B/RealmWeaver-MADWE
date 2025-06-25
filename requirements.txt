@@ -1,36 +1,55 @@
-# Core ML
-torch==2.1.0
-torchvision==0.16.0
-torchaudio==2.1.0
-diffusers==0.24.0
-transformers==4.36.0
-accelerate==0.25.0
-datasets==2.15.0
-peft==0.7.0
+# Core ML - Python 3.13.5 requires PyTorch nightly
+# pip install --pre torch torchvision torchaudio 
+
+# Diffusion and AI
+diffusers
+transformers
+accelerate
+datasets
+peft
+tokenizers
 
 # Optimization
-onnx==1.15.0
-onnxruntime-gpu==1.16.3
-tensorrt==8.6.1
+onnx
+onnxruntime-gpu
+# Note: TensorRT requires manual installation for Windows
 
-# Utils
-numpy==1.24.3
-pandas==2.0.3
-matplotlib==3.7.2
-seaborn==0.13.0
-pillow==10.1.0
-opencv-python==4.8.1
-tqdm==4.66.1
-pyyaml==6.0.1
-wandb==0.16.1
+# Core Libraries
+numpy
+pandas
+matplotlib
+seaborn
+pillow
+opencv-python
+scipy
+
+# Utilities
+tqdm
+pyyaml
+wandb
+huggingface-hub
+safetensors
+filelock
+packaging
+regex
+requests
 
 # Testing
-pytest==7.4.3
-pytest-cov==4.1.0
-pytest-benchmark==4.0.0
+pytest
+pytest-cov
+pytest-benchmark
 
 # Development
-black==23.12.0
-flake8==6.1.0
-mypy==1.7.1
-pre-commit==3.6.0
+black
+flake8
+mypy
+pre-commit
+
+# Windows specific
+pywin32
+colorama
+
+# Optional accelerations
+bitsandbytes
+
+# pip install torch-tensorrt --no-deps Install Torch-TensorRT separately 
