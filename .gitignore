@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# Data
+data/raw/*
+data/processed/*
+!data/*/.gitkeep
+*.h5
+*.pkl
+*.npy
+
+# Models
+*.pth
+*.onnx
+*.trt
+data/models/*
+!data/models/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Unity
+unity_project/[Ll]ibrary/
+unity_project/[Tt]emp/
+unity_project/[Oo]bj/
+unity_project/[Bb]uild/
+unity_project/[Bb]uilds/
+unity_project/[Ll]ogs/
+unity_project/[Uu]ser[Ss]ettings/
+
+# Jupyter
+.ipynb_checkpoints/
