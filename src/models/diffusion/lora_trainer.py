@@ -2,12 +2,11 @@
 LoRA training for Stable Diffusion 
 """
 
-import os
 import yaml
 import torch
 import torch.nn.functional as F
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration, set_seed
 from diffusers import (
@@ -22,11 +21,11 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 import wandb
 
-from ...utils.data_loader import BiomeDataset
+from ...utils.dataloader import DynamicConditionalDataset
 
 
 class LoRATrainer:
-    """LoRA trainer for game assets with Python 3.13 enhancements"""
+    """LoRA trainer for game assets with Python 3.11 enhancements"""
 
     def __init__(self, config_path: str | Path):
         with open(config_path, "r") as f:
@@ -110,11 +109,14 @@ class LoRATrainer:
             self.models["unet"].enable_gradient_checkpointing()
             self.models["text_encoder"].gradient_checkpointing_enable()
 
-    def create_dataloader(self, biome: str) -> DataLoader:
-        """Create dataloader for biome"""
-        dataset = BiomeDataset(
-            data_dir=Path(self.config["data_dir"]) / "raw",
-            biome=biome,
+    def create_dataloader(
+        self, condition: Dict[str, str], asset_type: str = "textures"
+    ) -> DataLoader:
+        """Create dataloader for specific conditions"""
+        dataset = DynamicConditionalDataset(
+            data_dir=Path(self.config["data_dir"]),
+            asset_type=asset_type,
+            condition=condition,
             tokenizer=self.models["tokenizer"],
             size=self.config["resolution"],
         )
@@ -183,14 +185,19 @@ class LoRATrainer:
 
         return loss
 
-    def train(self, biome: str, num_epochs: int | None = None) -> None:
-        """Train LoRA for biome with modern training loop"""
+    def train(
+        self,
+        condition: Dict[str, str],
+        asset_type: str = "textures",
+        num_epochs: int | None = None,
+    ) -> None:
+        """Train LoRA for specific conditions with modern training loop"""
         if num_epochs is None:
             num_epochs = self.config.get("num_train_epochs", 10)
 
         # Setup
         self.setup_models()
-        dataloader = self.create_dataloader(biome)
+        dataloader = self.create_dataloader(condition, asset_type)
 
         # Optimizer with optional 8-bit
         optimizer_class = torch.optim.AdamW
@@ -229,8 +236,9 @@ class LoRATrainer:
 
         # Initialize trackers
         if self.accelerator.is_main_process:
+            condition_str = "_".join(f"{k}_{v}" for k, v in condition.items())
             self.accelerator.init_trackers(
-                project_name=f"madwe-lora-{biome}", config=self.config
+                project_name=f"madwe-lora-{condition_str}", config=self.config
             )
 
         # Training loop
@@ -283,23 +291,28 @@ class LoRATrainer:
 
                         # Save checkpoint
                         if global_step % self.config["save_steps"] == 0:
-                            self.save_checkpoint(biome, global_step)
+                            self.save_checkpoint(condition, asset_type, global_step)
 
                         # Validation
                         if global_step % self.config.get("validation_steps", 100) == 0:
-                            self.validate(biome, global_step)
+                            self.validate(condition, asset_type, global_step)
 
         # Save final model
         self.accelerator.wait_for_everyone()
-        self.save_checkpoint(biome, global_step, final=True)
+        self.save_checkpoint(condition, asset_type, global_step, final=True)
         self.accelerator.end_training()
 
-    def save_checkpoint(self, biome: str, step: int, final: bool = False) -> None:
+    def save_checkpoint(
+        self, condition: Dict[str, str], asset_type: str, step: int, final: bool = False
+    ) -> None:
         """Save LoRA checkpoint with metadata"""
         self.accelerator.wait_for_everyone()
 
         if self.accelerator.is_main_process:
-            save_path = Path(self.config["output_dir"]) / f"lora_{biome}"
+            condition_str = "_".join(f"{k}_{v}" for k, v in condition.items())
+            save_path = (
+                Path(self.config["output_dir"]) / f"lora_{asset_type}_{condition_str}"
+            )
             if final:
                 save_path = save_path / "final"
             else:
@@ -314,7 +327,7 @@ class LoRATrainer:
 
             print(f"Saved checkpoint to {save_path}")
 
-    def validate(self, biome: str, step: int) -> None:
+    def validate(self, condition: Dict[str, str], asset_type: str, step: int) -> None:
         """Generate validation images"""
         self.models["unet"].eval()
 
@@ -332,10 +345,11 @@ class LoRATrainer:
         pipeline.set_progress_bar_config(disable=True)
 
         # Generate validation images
+        condition_str = "_".join(f"{k} {v}" for k, v in condition.items())
         validation_prompts = [
-            f"{biome} game texture, detailed, high quality",
-            f"{biome} environment asset, game ready, seamless",
-            f"{biome} tile pattern, stylized game art",
+            f"{asset_type} asset, {condition_str}, detailed, high quality",
+            f"{asset_type} for game, {condition_str}, game ready, seamless",
+            f"{asset_type} pattern, {condition_str}, stylized game art",
         ]
 
         images = []
@@ -355,7 +369,7 @@ class LoRATrainer:
         if self.accelerator.is_main_process:
             self.accelerator.log(
                 {
-                    f"validation/{biome}": [
+                    f"validation/{asset_type}_{condition_str}": [
                         wandb.Image(img, caption=prompt)
                         for img, prompt in zip(images, validation_prompts)
                     ]
@@ -375,15 +389,27 @@ def main():
         "--config", type=str, default="configs/training/lora_config.yaml"
     )
     parser.add_argument(
-        "--biome",
+        "--asset-type",
         type=str,
-        default="forest",
-        choices=["forest", "desert", "snow", "volcanic", "underwater", "sky"],
+        default="textures",
+        choices=["textures", "sprites", "gameplay"],
+    )
+    parser.add_argument(
+        "--condition",
+        type=str,
+        required=True,
+        help="Condition string in format key1_value1,key2_value2 (e.g., genre_platformer,style_pixel)",
     )
     args = parser.parse_args()
 
+    # Parse condition string
+    condition = {}
+    for pair in args.condition.split(","):
+        key, value = pair.split("_", 1)
+        condition[key] = value
+
     trainer = LoRATrainer(args.config)
-    trainer.train(args.biome)
+    trainer.train(condition, args.asset_type)
 
 
 if __name__ == "__main__":

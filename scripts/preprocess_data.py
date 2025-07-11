@@ -1,23 +1,25 @@
 """
-Preprocess raw assets into train/val/test splits - Python 3.13.5 compatible
+Preprocess raw assets into train/val/test splits - Python 3.11 compatible
+Works with dynamic directory structure
 """
 
 import shutil
 from pathlib import Path
 import random
 from tqdm import tqdm
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import json
 from datetime import datetime
+from collections import defaultdict
 
 
-def split_data(
+def split_dynamic_data(
     source_dir: Path | str,
     dest_dir: Path | str,
     splits: Dict[str, float] | None = None,
     seed: int = 42,
 ) -> Dict[str, int]:
-    """Split data into train/val/test with stratified sampling"""
+    """Split dynamically structured data into train/val/test"""
 
     if splits is None:
         splits = {"train": 0.8, "val": 0.1, "test": 0.1}
@@ -30,9 +32,6 @@ def split_data(
     source_dir = Path(source_dir)
     dest_dir = Path(dest_dir)
 
-    asset_types = ["textures", "sprites"]
-    biomes = ["forest", "desert", "snow", "volcanic", "underwater", "sky"]
-
     random.seed(seed)
 
     split_counts = {split: 0 for split in splits.keys()}
@@ -40,17 +39,24 @@ def split_data(
         "created_at": datetime.now().isoformat(),
         "seed": seed,
         "splits": splits,
+        "structure": {},
         "files": {split: [] for split in splits.keys()},
     }
 
+    # Discover asset types
+    asset_types = [d.name for d in source_dir.iterdir() if d.is_dir()]
+
     for asset_type in asset_types:
-        for biome in biomes:
-            biome_path = source_dir / asset_type / biome
-            if not biome_path.exists():
-                print(f"Warning: {biome_path} does not exist, skipping...")
+        asset_path = source_dir / asset_type
+        if not asset_path.exists():
+            continue
+
+        # Process each category directory
+        for category_dir in asset_path.iterdir():
+            if not category_dir.is_dir():
                 continue
 
-            images = list(biome_path.glob("*.png"))
+            images = list(category_dir.glob("*.png"))
             if not images:
                 continue
 
@@ -60,14 +66,14 @@ def split_data(
             n_train = int(splits["train"] * n_total)
             n_val = int(splits["val"] * n_total)
 
-            # Create split directories
+            # Create split directories maintaining structure
             for split in splits.keys():
-                split_path = dest_dir / split / asset_type / biome
+                split_path = dest_dir / split / asset_type / category_dir.name
                 split_path.mkdir(parents=True, exist_ok=True)
 
-            # Copy files to splits with progress bar
+            # Copy files to splits
             for i, img_path in enumerate(
-                tqdm(images, desc=f"{asset_type}/{biome}", leave=False)
+                tqdm(images, desc=f"{asset_type}/{category_dir.name}", leave=False)
             ):
                 if i < n_train:
                     split = "train"
@@ -76,7 +82,9 @@ def split_data(
                 else:
                     split = "test"
 
-                dest_path = dest_dir / split / asset_type / biome / img_path.name
+                dest_path = (
+                    dest_dir / split / asset_type / category_dir.name / img_path.name
+                )
                 shutil.copy2(img_path, dest_path)
 
                 split_counts[split] += 1
@@ -84,10 +92,13 @@ def split_data(
                     {
                         "path": str(dest_path.relative_to(dest_dir)),
                         "asset_type": asset_type,
-                        "biome": biome,
+                        "category": category_dir.name,
                         "original": str(img_path.relative_to(source_dir.parent)),
                     }
                 )
+
+    # Store discovered structure
+    split_metadata["structure"] = discover_structure(source_dir)
 
     # Save split metadata
     metadata_dir = dest_dir.parent / "metadata"
@@ -100,6 +111,18 @@ def split_data(
     print(f"\nSplit metadata saved to {metadata_path}")
 
     return split_counts
+
+
+def discover_structure(data_dir: Path) -> Dict[str, List[str]]:
+    """Discover the data structure"""
+    structure = defaultdict(list)
+
+    for asset_type_dir in data_dir.iterdir():
+        if asset_type_dir.is_dir():
+            categories = [d.name for d in asset_type_dir.iterdir() if d.is_dir()]
+            structure[asset_type_dir.name] = categories
+
+    return dict(structure)
 
 
 def verify_splits(processed_dir: Path | str) -> None:
@@ -115,48 +138,25 @@ def verify_splits(processed_dir: Path | str) -> None:
             continue
 
         total_files = 0
-        biome_counts = {}
+        asset_counts = defaultdict(lambda: defaultdict(int))
 
-        for asset_type in ["textures", "sprites"]:
-            for biome_path in (split_dir / asset_type).glob("*"):
-                if biome_path.is_dir():
-                    biome = biome_path.name
-                    count = len(list(biome_path.glob("*.png")))
+        for asset_type_dir in split_dir.iterdir():
+            if not asset_type_dir.is_dir():
+                continue
+
+            for category_dir in asset_type_dir.iterdir():
+                if category_dir.is_dir():
+                    count = len(list(category_dir.glob("*.png")))
                     total_files += count
-
-                    key = f"{asset_type}/{biome}"
-                    biome_counts[key] = count
+                    asset_counts[asset_type_dir.name][category_dir.name] = count
 
         print(f"\n{split.upper()} split:")
         print(f"  Total files: {total_files}")
         print("  Distribution:")
-        for key, count in sorted(biome_counts.items()):
-            print(f"    {key}: {count}")
-
-
-def create_file_lists(processed_dir: Path | str) -> None:
-    """Create text files listing all images in each split"""
-    processed_dir = Path(processed_dir)
-
-    print("\nCreating file lists...")
-
-    for split in ["train", "val", "test"]:
-        split_dir = processed_dir / split
-        if not split_dir.exists():
-            continue
-
-        file_list = []
-
-        for img_path in split_dir.rglob("*.png"):
-            relative_path = img_path.relative_to(split_dir)
-            file_list.append(str(relative_path))
-
-        # Save file list
-        list_path = processed_dir.parent / f"{split}_files.txt"
-        with open(list_path, "w") as f:
-            f.write("\n".join(sorted(file_list)))
-
-        print(f"  {split}: {len(file_list)} files -> {list_path}")
+        for asset_type, categories in sorted(asset_counts.items()):
+            print(f"    {asset_type}:")
+            for category, count in sorted(categories.items()):
+                print(f"      {category}: {count}")
 
 
 def main():
@@ -185,14 +185,9 @@ def main():
     parser.add_argument(
         "--test-split", type=float, default=0.1, help="Test split ratio"
     )
-    parser.add_argument(
-        "--seed", type=int, default=42, help="Random seed for reproducibility"
-    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
         "--verify", action="store_true", help="Verify splits after creation"
-    )
-    parser.add_argument(
-        "--create-lists", action="store_true", help="Create file lists for each split"
     )
 
     args = parser.parse_args()
@@ -204,7 +199,7 @@ def main():
     print(f"Splitting data from {args.source_dir} to {args.dest_dir}")
     print(f"Splits: {splits}")
 
-    split_counts = split_data(
+    split_counts = split_dynamic_data(
         args.source_dir, args.dest_dir, splits=splits, seed=args.seed
     )
 
@@ -218,10 +213,6 @@ def main():
     # Verify if requested
     if args.verify:
         verify_splits(args.dest_dir)
-
-    # Create file lists if requested
-    if args.create_lists:
-        create_file_lists(args.dest_dir)
 
 
 if __name__ == "__main__":
