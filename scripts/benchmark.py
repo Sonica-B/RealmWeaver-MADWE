@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, Any
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
 

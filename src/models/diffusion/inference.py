@@ -5,7 +5,7 @@ Diffusion model inference utilities
 import torch
 import numpy as np
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler, LCMScheduler
 from peft import PeftModel
 import time

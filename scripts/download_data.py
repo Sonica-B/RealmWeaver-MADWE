@@ -1,231 +1,515 @@
 """
-Download and generate synthetic game assets - Python 3.13.5 compatible
+Download and generate synthetic game assets - Python 3.11 compatible
+Fully dynamic asset generation with comprehensive game coverage
 """
 
-import os
 import numpy as np
 from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 import json
 from datetime import datetime
+import random
 
 
-def generate_synthetic_assets(
-    output_dir: Path | str, num_samples: int = 100, size: Tuple[int, int] = (512, 512)
-) -> None:
-    """Generate synthetic game assets for each biome"""
+class DynamicGameAssetGenerator:
+    """Generate game assets dynamically based on discovered categories"""
 
-    output_dir = Path(output_dir)
-    biomes = ["forest", "desert", "snow", "volcanic", "underwater", "sky"]
-    asset_types = ["textures", "sprites"]
+    def __init__(self, config_path: Path | str | None = None):
+        # Load from config or use defaults
+        if config_path and Path(config_path).exists():
+            with open(config_path, "r") as f:
+                config = json.load(f)
+        else:
+            config = self._get_default_config()
 
-    # Enhanced biome color palettes
-    palettes = {
-        "forest": [(34, 139, 34), (0, 100, 0), (85, 107, 47), (46, 125, 50)],
-        "desert": [(238, 203, 173), (205, 133, 63), (244, 164, 96), (255, 193, 7)],
-        "snow": [(255, 250, 250), (176, 224, 230), (135, 206, 235), (245, 245, 245)],
-        "volcanic": [(178, 34, 34), (255, 69, 0), (139, 0, 0), (255, 87, 34)],
-        "underwater": [(0, 119, 190), (0, 191, 255), (70, 130, 180), (0, 150, 136)],
-        "sky": [(135, 206, 250), (255, 255, 255), (176, 196, 222), (100, 149, 237)],
-    }
+        self.categories = config["categories"]
+        self.asset_structure = config["asset_structure"]
 
-    print("Generating synthetic game assets...")
-    metadata = {
-        "generated_at": datetime.now().isoformat(),
-        "num_samples": num_samples,
-        "size": size,
-        "assets": [],
-    }
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Get default comprehensive configuration"""
+        return {
+            "categories": {
+                "textures": {
+                    "genres": {
+                        "platformer": [
+                            "side_scrolling",
+                            "metroidvania",
+                            "puzzle_platformer",
+                            "auto_runner",
+                        ],
+                        "rpg": [
+                            "action_rpg",
+                            "turn_based",
+                            "roguelike",
+                            "jrpg",
+                            "tactical",
+                        ],
+                        "action": [
+                            "beat_em_up",
+                            "hack_n_slash",
+                            "run_n_gun",
+                            "twin_stick",
+                        ],
+                        "puzzle": ["match_3", "physics", "logic", "tile_matching"],
+                        "shooter": [
+                            "bullet_hell",
+                            "side_scrolling",
+                            "gallery",
+                            "shmup",
+                        ],
+                        "fighting": ["2d_fighter", "arena_brawler", "combo_fighter"],
+                        "adventure": ["point_click", "visual_novel", "text_adventure"],
+                        "strategy": ["rts", "turn_based", "tower_defense", "4x"],
+                        "simulation": ["life_sim", "farming", "city_builder", "tycoon"],
+                        "sports": ["arcade", "realistic", "extreme"],
+                        "racing": ["arcade", "kart", "time_trial"],
+                        "idle": ["clicker", "incremental", "automation"],
+                        "card": ["collectible", "deckbuilder", "solitaire"],
+                        "rhythm": ["music", "dance", "beat_matching"],
+                        "educational": ["math", "language", "science", "puzzle"],
+                    },
+                    "styles": {
+                        "pixel_art": [
+                            "8bit",
+                            "16bit",
+                            "32bit",
+                            "modern_pixel",
+                            "micro",
+                        ],
+                        "vector": ["flat", "gradient", "geometric", "minimalist"],
+                        "hand_drawn": [
+                            "sketch",
+                            "ink",
+                            "watercolor",
+                            "chalk",
+                            "pencil",
+                        ],
+                        "cel_shaded": ["anime", "cartoon", "comic", "outlined"],
+                        "realistic": ["photorealistic", "semi_realistic", "painterly"],
+                        "abstract": ["geometric", "fluid", "surreal", "glitch"],
+                        "retro": ["synthwave", "vaporwave", "art_deco", "vintage"],
+                        "gothic": ["dark", "victorian", "medieval", "horror"],
+                        "isometric": ["pixel_iso", "vector_iso", "detailed_iso"],
+                        "low_poly": ["faceted", "angular", "crystalline"],
+                        "monochrome": ["silhouette", "noir", "minimalist"],
+                        "stylized": ["exaggerated", "whimsical", "fantastical"],
+                    },
+                    "themes": {
+                        "fantasy": ["medieval", "magical", "mythical", "fairy_tale"],
+                        "sci_fi": ["cyberpunk", "space", "futuristic", "alien"],
+                        "horror": ["gothic", "psychological", "cosmic", "zombie"],
+                        "nature": ["forest", "ocean", "desert", "arctic", "jungle"],
+                        "urban": ["modern_city", "dystopian", "underground", "neon"],
+                        "historical": [
+                            "ancient",
+                            "medieval",
+                            "renaissance",
+                            "industrial",
+                        ],
+                        "abstract": ["geometric", "surreal", "psychedelic", "void"],
+                        "steampunk": ["mechanical", "victorian_tech", "brass", "gears"],
+                        "post_apocalyptic": [
+                            "wasteland",
+                            "ruins",
+                            "survivor",
+                            "mutant",
+                        ],
+                    },
+                },
+                "sprites": {
+                    "types": {
+                        "characters": [
+                            "hero",
+                            "enemy",
+                            "npc",
+                            "boss",
+                            "companion",
+                            "mount",
+                        ],
+                        "items": [
+                            "weapon",
+                            "armor",
+                            "consumable",
+                            "key",
+                            "treasure",
+                            "tool",
+                        ],
+                        "effects": [
+                            "explosion",
+                            "magic",
+                            "particle",
+                            "weather",
+                            "impact",
+                        ],
+                        "ui": ["button", "icon", "frame", "bar", "cursor", "popup"],
+                        "environment": [
+                            "prop",
+                            "decoration",
+                            "hazard",
+                            "interactive",
+                            "background",
+                        ],
+                    },
+                    "animations": {
+                        "idle": ["breathing", "floating", "swaying", "pulsing"],
+                        "movement": ["walk", "run", "jump", "climb", "swim", "fly"],
+                        "combat": ["attack", "defend", "dodge", "special", "death"],
+                        "interaction": ["use", "pickup", "activate", "talk"],
+                        "emotion": ["happy", "sad", "angry", "surprised", "thinking"],
+                    },
+                },
+                "gameplay": {
+                    "mechanics": {
+                        "platforming": ["jumping", "wall_jump", "double_jump", "dash"],
+                        "combat": ["melee", "ranged", "magic", "combo"],
+                        "puzzle": ["switch", "push_block", "key_door", "pattern"],
+                        "collection": ["coins", "powerups", "secrets", "achievements"],
+                        "progression": [
+                            "experience",
+                            "skill_tree",
+                            "upgrades",
+                            "unlocks",
+                        ],
+                    },
+                    "level_elements": {
+                        "terrain": ["solid", "platform", "slope", "destructible"],
+                        "hazards": ["spikes", "lava", "enemy", "trap"],
+                        "interactive": ["door", "switch", "portal", "checkpoint"],
+                        "decorative": [
+                            "background",
+                            "foreground",
+                            "particle",
+                            "lighting",
+                        ],
+                    },
+                },
+            },
+            "asset_structure": {
+                "textures": {
+                    "pattern": "seamless tiling texture",
+                    "elements": [
+                        "material properties",
+                        "surface detail",
+                        "color variation",
+                        "environmental wear",
+                    ],
+                },
+                "sprites": {
+                    "pattern": "game-ready sprite asset",
+                    "elements": [
+                        "clear silhouette",
+                        "readable at small size",
+                        "animation-friendly design",
+                    ],
+                },
+                "gameplay": {
+                    "pattern": "functional game element",
+                    "elements": [
+                        "visual clarity",
+                        "gameplay purpose",
+                        "feedback indication",
+                    ],
+                },
+            },
+        }
 
-    for asset_type in asset_types:
-        for biome in biomes:
-            biome_dir = output_dir / "raw" / asset_type / biome
-            biome_dir.mkdir(parents=True, exist_ok=True)
+    def generate_dynamic_prompt(self, asset_type: str, metadata: Dict[str, str]) -> str:
+        """Generate detailed prompt based on dynamic metadata"""
+        prompt_parts = []
 
-            colors = palettes[biome]
+        # Base description
+        base_pattern = self.asset_structure.get(asset_type, {}).get(
+            "pattern", "game asset"
+        )
+        prompt_parts.append(f"Professional {base_pattern}")
 
-            for i in tqdm(range(num_samples), desc=f"{asset_type}/{biome}"):
-                img = create_asset_image(asset_type, colors, size)
-                filename = f"{biome}_{asset_type}_{i:04d}.png"
-                filepath = biome_dir / filename
-                img.save(filepath, optimize=True)
+        # Add all metadata attributes
+        for key, value in metadata.items():
+            if key != "asset_type":
+                # Convert underscores to spaces and format nicely
+                formatted_key = key.replace("_", " ")
+                formatted_value = value.replace("_", " ")
+                prompt_parts.append(f"{formatted_key}: {formatted_value}")
 
-                metadata["assets"].append(
-                    {
-                        "filename": filename,
-                        "path": str(filepath.relative_to(output_dir)),
-                        "asset_type": asset_type,
-                        "biome": biome,
-                        "size": size,
-                    }
-                )
+        # Add asset-specific elements
+        elements = self.asset_structure.get(asset_type, {}).get("elements", [])
+        if elements:
+            prompt_parts.append(f"featuring {', '.join(elements)}")
 
-    # Save metadata
-    metadata_path = output_dir / "metadata" / "generated_assets.json"
-    metadata_path.parent.mkdir(exist_ok=True)
-    with open(metadata_path, "w") as f:
-        json.dump(metadata, f, indent=2)
+        # Technical requirements
+        prompt_parts.extend(
+            [
+                "production quality",
+                "game-ready asset",
+                "optimized for real-time rendering",
+                "consistent art direction",
+                "professional polish",
+            ]
+        )
 
-    print(f"\nGenerated {len(metadata['assets'])} assets")
-    print(f"Metadata saved to {metadata_path}")
+        return ", ".join(prompt_parts)
 
+    def discover_categories(self, base_path: Path) -> Dict[str, List[str]]:
+        """Dynamically discover existing categories from directory structure"""
+        categories = {}
 
-def create_asset_image(
-    asset_type: str,
-    colors: List[Tuple[int, int, int]],
-    size: Tuple[int, int] = (512, 512),
-) -> Image.Image:
-    """Create synthetic asset image with improved patterns"""
+        for asset_type in ["textures", "sprites", "gameplay"]:
+            type_path = base_path / asset_type
+            if type_path.exists():
+                # Get all subdirectories
+                subdirs = [d.name for d in type_path.iterdir() if d.is_dir()]
+                if subdirs:
+                    categories[asset_type] = subdirs
 
-    base_color = colors[np.random.randint(len(colors))]
-    img_array = np.zeros((*size, 3), dtype=np.uint8)
+        return categories
 
-    if asset_type == "textures":
-        # Create more sophisticated texture patterns
-        pattern_type = np.random.choice(["tiles", "noise", "gradient", "mixed"])
+    def create_asset_image(
+        self,
+        asset_type: str,
+        metadata: Dict[str, Any],
+        size: Tuple[int, int] = (512, 512),
+    ) -> Image.Image:
+        """Create asset based on type and metadata"""
+        # Generate base color from metadata hash
+        metadata_str = json.dumps(metadata, sort_keys=True)
+        color_seed = hash(metadata_str) % 1000000
+        np.random.seed(color_seed)
 
-        if pattern_type == "tiles":
-            # Tiled texture with variations
-            tile_sizes = [32, 64, 128]
-            tile_size = np.random.choice(tile_sizes)
+        base_color = (
+            np.random.randint(50, 206),
+            np.random.randint(50, 206),
+            np.random.randint(50, 206),
+        )
 
-            for i in range(0, size[0], tile_size):
-                for j in range(0, size[1], tile_size):
-                    variation = np.random.randint(-30, 30, 3)
-                    color = np.clip(np.array(base_color) + variation, 0, 255)
+        img_array = np.zeros((*size, 3), dtype=np.uint8)
 
-                    # Add subtle gradient within tile
-                    tile = np.ones((tile_size, tile_size, 3)) * color
-                    gradient = np.linspace(0.9, 1.1, tile_size)
-                    tile = tile * gradient[:, np.newaxis, np.newaxis]
-
-                    img_array[i : i + tile_size, j : j + tile_size] = np.clip(
-                        tile, 0, 255
-                    )
-
-        elif pattern_type == "noise":
-            # Perlin-like noise pattern
-            noise = np.random.randn(size[0] // 4, size[1] // 4, 3) * 30
-            from scipy.ndimage import zoom
-
-            noise = zoom(noise, (4, 4, 1), order=1)
-            img_array = np.clip(base_color + noise, 0, 255).astype(np.uint8)
-
-        elif pattern_type == "gradient":
-            # Gradient pattern
-            gradient_x = np.linspace(0, 1, size[0])
-            gradient_y = np.linspace(0, 1, size[1])
-            gradient = np.outer(gradient_x, gradient_y)
-
-            for c in range(3):
-                channel = base_color[c] * (0.7 + 0.3 * gradient)
-                img_array[:, :, c] = np.clip(channel, 0, 255)
-
-        else:  # mixed
-            # Combination of patterns
+        if asset_type == "textures":
+            # Create tileable texture pattern
+            self._generate_texture_pattern(img_array, base_color, metadata)
+        elif asset_type == "sprites":
+            # Create sprite with clear shape
+            self._generate_sprite_pattern(img_array, base_color, metadata)
+        elif asset_type == "gameplay":
+            # Create gameplay element
+            self._generate_gameplay_pattern(img_array, base_color, metadata)
+        else:
+            # Default pattern
             img_array[:] = base_color
-            # Add random shapes
-            num_shapes = np.random.randint(5, 15)
-            for _ in range(num_shapes):
-                x, y = np.random.randint(0, size[0]), np.random.randint(0, size[1])
-                radius = np.random.randint(20, 80)
-                variation = np.random.randint(-40, 40, 3)
-                color = np.clip(np.array(base_color) + variation, 0, 255)
 
-                y_coords, x_coords = np.ogrid[: size[0], : size[1]]
-                mask = (x_coords - x) ** 2 + (y_coords - y) ** 2 <= radius**2
-                img_array[mask] = color
+        return Image.fromarray(img_array)
 
-    else:  # sprites
-        # Create sprite-like shapes with transparency
-        img_array[:] = (255, 255, 255)  # White background
+    def _generate_texture_pattern(
+        self,
+        img_array: np.ndarray,
+        base_color: Tuple[int, int, int],
+        metadata: Dict[str, Any],
+    ) -> None:
+        """Generate texture-specific patterns"""
+        height, width = img_array.shape[:2]
 
-        # Main sprite shape
-        sprite_type = np.random.choice(["character", "item", "effect"])
+        # Different patterns based on metadata
+        if "pixel" in str(metadata.get("style", "")):
+            # Pixel pattern
+            block_size = 16
+            for i in range(0, height, block_size):
+                for j in range(0, width, block_size):
+                    variation = np.random.randint(-30, 30)
+                    color = np.clip(np.array(base_color) + variation, 0, 255)
+                    img_array[i : i + block_size, j : j + block_size] = color
+        else:
+            # Smooth gradient pattern
+            for i in range(height):
+                for j in range(width):
+                    # Create seamless tiling
+                    u = i / height * 2 * np.pi
+                    v = j / width * 2 * np.pi
 
-        if sprite_type == "character":
-            # Simple character silhouette
-            center_x, center_y = size[0] // 2, size[1] // 2
+                    noise = (np.sin(u) * np.cos(v) + 1) / 2
+                    variation = int(noise * 60 - 30)
 
+                    img_array[i, j] = np.clip(np.array(base_color) + variation, 0, 255)
+
+    def _generate_sprite_pattern(
+        self,
+        img_array: np.ndarray,
+        base_color: Tuple[int, int, int],
+        metadata: Dict[str, Any],
+    ) -> None:
+        """Generate sprite-specific patterns"""
+        height, width = img_array.shape[:2]
+        center_x, center_y = width // 2, height // 2
+
+        # White/transparent background
+        img_array[:] = (255, 255, 255)
+
+        # Create sprite shape based on type
+        sprite_type = metadata.get("type", "character")
+
+        if "character" in sprite_type:
+            # Character silhouette
             # Body
-            body_radius = np.random.randint(60, 100)
-            y_coords, x_coords = np.ogrid[: size[0], : size[1]]
-            body_mask = (x_coords - center_x) ** 2 + (
-                y_coords - center_y
-            ) ** 2 <= body_radius**2
-            img_array[body_mask] = base_color
+            body_h = height // 3
+            body_w = width // 4
+            y1 = center_y - body_h // 2
+            y2 = center_y + body_h // 2
+            x1 = center_x - body_w // 2
+            x2 = center_x + body_w // 2
+            img_array[y1:y2, x1:x2] = base_color
 
             # Head
-            head_y = center_y - body_radius - 30
-            head_radius = np.random.randint(30, 50)
+            head_r = width // 8
+            y_coords, x_coords = np.ogrid[:height, :width]
             head_mask = (x_coords - center_x) ** 2 + (
-                y_coords - head_y
-            ) ** 2 <= head_radius**2
+                y_coords - (center_y - body_h // 2 - head_r)
+            ) ** 2 <= head_r**2
             img_array[head_mask] = np.clip(np.array(base_color) * 0.9, 0, 255)
 
-        elif sprite_type == "item":
-            # Item shapes (gems, coins, etc.)
-            num_facets = np.random.randint(4, 8)
-            center = np.array([size[0] // 2, size[1] // 2])
-            radius = np.random.randint(50, 100)
+        elif "item" in sprite_type:
+            # Item shape (diamond/gem)
+            for i in range(height):
+                for j in range(width):
+                    if abs(i - center_y) + abs(j - center_x) < min(height, width) // 3:
+                        distance = abs(i - center_y) + abs(j - center_x)
+                        fade = 1.0 - (distance / (min(height, width) // 3))
+                        img_array[i, j] = np.clip(
+                            np.array(base_color) * (0.7 + 0.3 * fade), 0, 255
+                        )
+        else:
+            # Generic circular sprite
+            radius = min(height, width) // 3
+            y_coords, x_coords = np.ogrid[:height, :width]
+            mask = (x_coords - center_x) ** 2 + (y_coords - center_y) ** 2 <= radius**2
+            img_array[mask] = base_color
 
-            for i in range(num_facets):
-                angle = i * 2 * np.pi / num_facets
-                x = int(center[0] + radius * np.cos(angle))
-                y = int(center[1] + radius * np.sin(angle))
+    def _generate_gameplay_pattern(
+        self,
+        img_array: np.ndarray,
+        base_color: Tuple[int, int, int],
+        metadata: Dict[str, Any],
+    ) -> None:
+        """Generate gameplay element patterns"""
+        height, width = img_array.shape[:2]
 
-                # Draw triangular facets
-                variation = np.random.randint(-20, 20, 3)
-                color = np.clip(np.array(base_color) + variation, 0, 255)
+        # Create functional-looking elements
+        mechanic = metadata.get("mechanic", "platform")
 
-                # Simple filled shape
-                y_coords, x_coords = np.ogrid[: size[0], : size[1]]
-                dist_from_center = np.sqrt(
-                    (x_coords - center[0]) ** 2 + (y_coords - center[1]) ** 2
-                )
-                dist_from_point = np.sqrt((x_coords - x) ** 2 + (y_coords - y) ** 2)
-                mask = (dist_from_center < radius) & (dist_from_point < radius // 2)
-                img_array[mask] = color
+        if "platform" in mechanic:
+            # Platform tile
+            img_array[:] = base_color
+            # Add edge highlights
+            img_array[:5, :] = np.clip(np.array(base_color) * 1.3, 0, 255)
+            img_array[-5:, :] = np.clip(np.array(base_color) * 0.7, 0, 255)
+        elif "hazard" in mechanic:
+            # Hazard pattern (spikes)
+            img_array[:] = (200, 200, 200)  # Gray base
+            # Create triangle patterns
+            for x in range(0, width, width // 8):
+                for y in range(height // 2, height):
+                    if (y - height // 2) < (
+                        width // 16 - abs(x + width // 16 - (x % (width // 8)))
+                    ):
+                        img_array[y, x] = base_color
+        else:
+            # Generic gameplay element
+            img_array[:] = base_color
+            # Add some detail
+            img_array[height // 4 : 3 * height // 4, width // 4 : 3 * width // 4] = (
+                np.clip(np.array(base_color) * 0.8, 0, 255)
+            )
 
-        else:  # effect
-            # Particle effects
-            num_particles = np.random.randint(20, 50)
-            for _ in range(num_particles):
-                x, y = np.random.randint(50, size[0] - 50, 2)
-                radius = np.random.randint(5, 20)
-                variation = np.random.randint(-50, 50, 3)
-                color = np.clip(np.array(base_color) + variation, 0, 255)
+    def generate_comprehensive_assets(
+        self, output_dir: Path | str, samples_per_category: int = 10
+    ) -> None:
+        """Generate assets based on dynamic categories"""
+        output_dir = Path(output_dir)
+        raw_dir = output_dir / "raw"
 
-                y_coords, x_coords = np.ogrid[: size[0], : size[1]]
-                mask = (x_coords - x) ** 2 + (y_coords - y) ** 2 <= radius**2
+        print("Generating comprehensive game assets...")
 
-                # Soft edges
-                distances = np.sqrt((x_coords - x) ** 2 + (y_coords - y) ** 2)
-                alpha = np.clip(1 - distances / radius, 0, 1)
+        metadata_all = {
+            "generated_at": datetime.now().isoformat(),
+            "structure": "raw/[asset_type]/[category_combinations]/",
+            "assets": [],
+        }
 
-                for c in range(3):
-                    img_array[:, :, c][mask] = (
-                        alpha[mask] * color[c]
-                        + (1 - alpha[mask]) * img_array[:, :, c][mask]
-                    )
+        # Process each asset type
+        for asset_type, type_categories in self.categories.items():
+            print(f"\nGenerating {asset_type}...")
 
-    return Image.fromarray(img_array.astype(np.uint8))
+            # Create all combinations for this asset type
+            combinations = self._generate_combinations(type_categories)
 
+            with tqdm(
+                total=len(combinations) * samples_per_category, desc=f"{asset_type}"
+            ) as pbar:
 
-def download_real_assets(output_dir: Path | str) -> None:
-    """Placeholder for downloading real game assets"""
-    print("\nNote: Real asset downloading not implemented")
-    print("To use real Dragon Hills assets:")
-    print("1. Extract game assets using appropriate tools")
-    print("2. Organize by biome and asset type")
-    print("3. Place in data/raw/{asset_type}/{biome}/")
-    print("\nAsset structure:")
-    print("  - textures/forest/*.png")
-    print("  - textures/desert/*.png")
-    print("  - sprites/characters/*.png")
-    print("  - etc.")
+                for combo in combinations:
+                    # Create directory
+                    combo_path = "_".join(f"{k}_{v}" for k, v in combo.items())
+                    asset_dir = raw_dir / asset_type / combo_path
+                    asset_dir.mkdir(parents=True, exist_ok=True)
+
+                    # Generate samples
+                    for i in range(samples_per_category):
+                        # Generate prompt
+                        prompt = self.generate_dynamic_prompt(asset_type, combo)
+
+                        # Create image
+                        img = self.create_asset_image(asset_type, combo)
+
+                        # Save
+                        filename = f"{asset_type}_{combo_path}_{i:04d}.png"
+                        filepath = asset_dir / filename
+                        img.save(filepath, optimize=True)
+
+                        # Store metadata
+                        metadata_all["assets"].append(
+                            {
+                                "filename": filename,
+                                "path": str(filepath.relative_to(output_dir)),
+                                "asset_type": asset_type,
+                                "metadata": combo,
+                                "prompt": prompt,
+                            }
+                        )
+
+                        pbar.update(1)
+
+        # Save metadata
+        metadata_dir = output_dir / "metadata"
+        metadata_dir.mkdir(exist_ok=True)
+
+        with open(metadata_dir / "generated_assets.json", "w") as f:
+            json.dump(metadata_all, f, indent=2)
+
+        print(f"\nGenerated {len(metadata_all['assets'])} total assets")
+        print(f"Metadata saved to {metadata_dir / 'generated_assets.json'}")
+
+    def _generate_combinations(
+        self, categories: Dict[str, List[str]]
+    ) -> List[Dict[str, str]]:
+        """Generate all valid combinations from categories"""
+        combinations = []
+
+        # Get category names and their values
+        cat_names = list(categories.keys())
+        cat_values = [categories[name] for name in cat_names]
+
+        # Generate cartesian product
+        import itertools
+
+        for combo in itertools.product(*cat_values):
+            combo_dict = {cat_names[i]: combo[i] for i in range(len(cat_names))}
+            combinations.append(combo_dict)
+
+        # Limit combinations if too many
+        if len(combinations) > 100:
+            # Sample subset
+            combinations = random.sample(combinations, 100)
+
+        return combinations
 
 
 def main():
@@ -234,35 +518,32 @@ def main():
 
     parser = argparse.ArgumentParser(description="Generate game assets for MADWE")
     parser.add_argument(
-        "--output-dir", type=str, default="data", help="Output directory for assets"
+        "--output-dir", type=str, default="data", help="Output directory"
     )
+    parser.add_argument("--samples", type=int, default=10, help="Samples per category")
+    parser.add_argument("--config", type=str, help="Configuration file path")
     parser.add_argument(
-        "--num-samples", type=int, default=100, help="Number of samples per category"
-    )
-    parser.add_argument(
-        "--size",
-        type=int,
-        nargs=2,
-        default=[512, 512],
-        help="Image size (width height)",
-    )
-    parser.add_argument(
-        "--download-real", action="store_true", help="Instructions for real assets"
+        "--quick", action="store_true", help="Quick mode with fewer samples"
     )
 
     args = parser.parse_args()
 
-    output_dir = Path(args.output_dir)
+    # Initialize generator
+    generator = DynamicGameAssetGenerator(args.config)
 
-    if args.download_real:
-        download_real_assets(output_dir)
-    else:
-        generate_synthetic_assets(
-            output_dir, num_samples=args.num_samples, size=tuple(args.size)
-        )
+    # Quick mode adjustments
+    if args.quick:
+        args.samples = 2
+        # Reduce categories for quick testing
+        for asset_type in generator.categories:
+            for cat in generator.categories[asset_type]:
+                if isinstance(generator.categories[asset_type][cat], list):
+                    generator.categories[asset_type][cat] = generator.categories[
+                        asset_type
+                    ][cat][:2]
 
-        print(f"\nSynthetic assets generated in {output_dir / 'raw'}")
-        print("Replace with real game assets for production use")
+    # Generate assets
+    generator.generate_comprehensive_assets(args.output_dir, args.samples)
 
 
 if __name__ == "__main__":
