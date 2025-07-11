@@ -431,44 +431,69 @@ class DynamicGameAssetGenerator:
                         img_array[i : i + tile_size, j : j + tile_size] = tile_color
                     elif tile_pattern == 1:
                         # Gradient tile
-                        for y in range(tile_size):
+                        actual_height = min(tile_size, height - i)
+                        for y in range(actual_height):
                             progress = y / tile_size
                             color = (
                                 np.array(base_color) * (1 - progress)
                                 + np.array(accent_color) * progress
                             )
-                            img_array[i + y : i + y + 1, j : j + tile_size] = color
+                            if i + y < height:
+                                img_array[
+                                    i + y : i + y + 1, j : min(j + tile_size, width)
+                                ] = color
                     elif tile_pattern == 2:
                         # Diagonal pattern
-                        for y in range(tile_size):
-                            for x in range(tile_size):
+                        for y in range(min(tile_size, height - i)):
+                            for x in range(min(tile_size, width - j)):
                                 if (x + y) % (tile_size // 4) < tile_size // 8:
                                     img_array[i + y, j + x] = accent_color
                                 else:
                                     img_array[i + y, j + x] = base_color
                     else:
                         # Center highlight
-                        img_array[i : i + tile_size, j : j + tile_size] = base_color
+                        actual_height = min(tile_size, height - i)
+                        actual_width = min(tile_size, width - j)
+                        img_array[i : i + actual_height, j : j + actual_width] = (
+                            base_color
+                        )
                         center_size = tile_size // 3
                         center_start = tile_size // 3
-                        img_array[
-                            i + center_start : i + center_start + center_size,
-                            j + center_start : j + center_start + center_size,
-                        ] = accent_color
+                        if center_start < actual_height and center_start < actual_width:
+                            end_y = min(i + center_start + center_size, height)
+                            end_x = min(j + center_start + center_size, width)
+                            img_array[
+                                i + center_start : end_y, j + center_start : end_x
+                            ] = accent_color
 
                     # Always add borders with variation
                     border_width = random.randint(1, 3)
                     border_color = np.clip(
                         np.array(base_color) * random.uniform(0.6, 0.8), 0, 255
                     )
-                    img_array[i : i + border_width, j : j + tile_size] = border_color
-                    img_array[
-                        i + tile_size - border_width : i + tile_size, j : j + tile_size
-                    ] = border_color
-                    img_array[i : i + tile_size, j : j + border_width] = border_color
-                    img_array[
-                        i : i + tile_size, j + tile_size - border_width : j + tile_size
-                    ] = border_color
+
+                    # Top border
+                    if i + border_width <= height:
+                        img_array[
+                            i : i + border_width, j : min(j + tile_size, width)
+                        ] = border_color
+                    # Bottom border
+                    if i + tile_size <= height:
+                        img_array[
+                            max(i + tile_size - border_width, 0) : i + tile_size,
+                            j : min(j + tile_size, width),
+                        ] = border_color
+                    # Left border
+                    if j + border_width <= width:
+                        img_array[
+                            i : min(i + tile_size, height), j : j + border_width
+                        ] = border_color
+                    # Right border
+                    if j + tile_size <= width:
+                        img_array[
+                            i : min(i + tile_size, height),
+                            max(j + tile_size - border_width, 0) : j + tile_size,
+                        ] = border_color
 
     def _generate_sprite_pattern(
         self,
