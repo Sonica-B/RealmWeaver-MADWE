@@ -83,3 +83,4 @@ build/
 *.bak
 *.swp
 *~.nib
+scripts/keys.txt
