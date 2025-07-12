@@ -1,0 +1,2416 @@
+{
+  "created_at": "2025-07-12T10:20:31.470091",
+  "stats": {
+    "total_files": 1200,
+    "valid_files": 63,
+    "rejected_files": 816,
+    "rejection_reasons": {
+      "duplicate": 321,
+      "low_contrast": 274,
+      "insufficient_detail": 542
+    },
+    "biome_distribution": {
+      "desert": 5,
+      "forest": 27,
+      "snow": 13,
+      "volcanic": 18
+    },
+    "asset_type_distribution": {
+      "textures": 47,
+      "sprites": 16
+    },
+    "resolution_distribution": {
+      "512x512": 63
+    },
+    "file_sizes": [
+      290972,
+      145400,
+      258561,
+      281312,
+      119387,
+      300392,
+      284546,
+      336458,
+      337297,
+      283013,
+      285410,
+      285381,
+      285214,
+      284668,
+      302275,
+      285520,
+      336560,
+      301957,
+      286084,
+      283684,
+      284996,
+      300799,
+      302100,
+      283117,
+      301988,
+      285066,
+      335466,
+      302427,
+      336343,
+      282461,
+      65544,
+      52674,
+      49299,
+      49142,
+      74535,
+      68719,
+      51220,
+      59544,
+      52755,
+      51856,
+      57714,
+      57505,
+      195536,
+      246155,
+      232689,
+      189385,
+      224530,
+      7385,
+      1240,
+      5025,
+      10848,
+      11056,
+      10759,
+      11118,
+      11116,
+      10925,
+      11273,
+      10774,
+      11012,
+      10727,
+      10958,
+      11107,
+      10814
+    ]
+  },
+  "splits": {
+    "train": {
+      "num_files": 111,
+      "files": [
+        {
+          "filename": "desert_textures_0016.png",
+          "path": "train\\textures\\desert\\desert_textures_0016.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 281312,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.549094158496732,
+            "is_seamless": false,
+            "detail_level": 137193.25507045563,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "desert_textures_0016_flip_v.png",
+          "path": "train\\textures\\desert\\desert_textures_0016_flip_v.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 281312,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.549094158496732,
+            "is_seamless": false,
+            "detail_level": 137193.25507045563,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "desert_textures_0016_bright_up.png",
+          "path": "train\\textures\\desert\\desert_textures_0016_bright_up.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 281312,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.549094158496732,
+            "is_seamless": false,
+            "detail_level": 137193.25507045563,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "desert_textures_0022.png",
+          "path": "train\\textures\\desert\\desert_textures_0022.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 119387,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6545565257352941,
+            "is_seamless": false,
+            "detail_level": 197079.58498399056,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "desert_textures_0022_bright_up.png",
+          "path": "train\\textures\\desert\\desert_textures_0022_bright_up.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 119387,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6545565257352941,
+            "is_seamless": false,
+            "detail_level": 197079.58498399056,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "desert_textures_0022_rot180.png",
+          "path": "train\\textures\\desert\\desert_textures_0022_rot180.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 119387,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6545565257352941,
+            "is_seamless": false,
+            "detail_level": 197079.58498399056,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "desert_textures_0000.png",
+          "path": "train\\textures\\desert\\desert_textures_0000.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 290972,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5441546670751634,
+            "is_seamless": false,
+            "detail_level": 159970.28172301644,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "desert_textures_0000_flip_v.png",
+          "path": "train\\textures\\desert\\desert_textures_0000_flip_v.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 290972,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5441546670751634,
+            "is_seamless": false,
+            "detail_level": 159970.28172301644,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "desert_textures_0000_rot180.png",
+          "path": "train\\textures\\desert\\desert_textures_0000_rot180.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 290972,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5441546670751634,
+            "is_seamless": false,
+            "detail_level": 159970.28172301644,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0049.png",
+          "path": "train\\textures\\forest\\forest_textures_0049.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 336560,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7841743259803922,
+            "is_seamless": false,
+            "detail_level": 98189.73351498906,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0049_rot90.png",
+          "path": "train\\textures\\forest\\forest_textures_0049_rot90.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 336560,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7841743259803922,
+            "is_seamless": false,
+            "detail_level": 98189.73351498906,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0049_bright_up.png",
+          "path": "train\\textures\\forest\\forest_textures_0049_bright_up.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 336560,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7841743259803922,
+            "is_seamless": false,
+            "detail_level": 98189.73351498906,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0076.png",
+          "path": "train\\textures\\forest\\forest_textures_0076.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 283117,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7545921415441177,
+            "is_seamless": false,
+            "detail_level": 56313.36296642638,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0076_rot270.png",
+          "path": "train\\textures\\forest\\forest_textures_0076_rot270.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 283117,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7545921415441177,
+            "is_seamless": false,
+            "detail_level": 56313.36296642638,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0076_flip_v.png",
+          "path": "train\\textures\\forest\\forest_textures_0076_flip_v.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 283117,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7545921415441177,
+            "is_seamless": false,
+            "detail_level": 56313.36296642638,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0090.png",
+          "path": "train\\textures\\forest\\forest_textures_0090.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 302427,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7474195772058824,
+            "is_seamless": false,
+            "detail_level": 68844.99288716048,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0090_rot90.png",
+          "path": "train\\textures\\forest\\forest_textures_0090_rot90.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 302427,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7474195772058824,
+            "is_seamless": false,
+            "detail_level": 68844.99288716048,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0090_flip_h.png",
+          "path": "train\\textures\\forest\\forest_textures_0090_flip_h.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 302427,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7474195772058824,
+            "is_seamless": false,
+            "detail_level": 68844.99288716048,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0078.png",
+          "path": "train\\textures\\forest\\forest_textures_0078.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 301988,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7521776705473856,
+            "is_seamless": false,
+            "detail_level": 67958.86118652062,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0078_rot90.png",
+          "path": "train\\textures\\forest\\forest_textures_0078_rot90.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 301988,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7521776705473856,
+            "is_seamless": false,
+            "detail_level": 67958.86118652062,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0078_rot180.png",
+          "path": "train\\textures\\forest\\forest_textures_0078_rot180.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 301988,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7521776705473856,
+            "is_seamless": false,
+            "detail_level": 67958.86118652062,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0012.png",
+          "path": "train\\textures\\forest\\forest_textures_0012.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 283013,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7290510110294117,
+            "is_seamless": false,
+            "detail_level": 56944.725131846826,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0012_flip_v.png",
+          "path": "train\\textures\\forest\\forest_textures_0012_flip_v.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 283013,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7290510110294117,
+            "is_seamless": false,
+            "detail_level": 56944.725131846826,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0012_bright_down.png",
+          "path": "train\\textures\\forest\\forest_textures_0012_bright_down.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 283013,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7290510110294117,
+            "is_seamless": false,
+            "detail_level": 56944.725131846826,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0063.png",
+          "path": "train\\textures\\forest\\forest_textures_0063.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 286084,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6462745098039215,
+            "is_seamless": false,
+            "detail_level": 56862.557865339244,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0063_bright_up.png",
+          "path": "train\\textures\\forest\\forest_textures_0063_bright_up.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 286084,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6462745098039215,
+            "is_seamless": false,
+            "detail_level": 56862.557865339244,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0063_flip_h.png",
+          "path": "train\\textures\\forest\\forest_textures_0063_flip_h.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 286084,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6462745098039215,
+            "is_seamless": false,
+            "detail_level": 56862.557865339244,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0002.png",
+          "path": "train\\textures\\forest\\forest_textures_0002.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 284546,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6875972732843136,
+            "is_seamless": false,
+            "detail_level": 57961.32486607875,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0002_rot90.png",
+          "path": "train\\textures\\forest\\forest_textures_0002_rot90.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 284546,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6875972732843136,
+            "is_seamless": false,
+            "detail_level": 57961.32486607875,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0002_bright_up.png",
+          "path": "train\\textures\\forest\\forest_textures_0002_bright_up.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 284546,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6875972732843136,
+            "is_seamless": false,
+            "detail_level": 57961.32486607875,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0024.png",
+          "path": "train\\textures\\forest\\forest_textures_0024.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285214,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6854589205473857,
+            "is_seamless": false,
+            "detail_level": 58040.13620077192,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0024_flip_h.png",
+          "path": "train\\textures\\forest\\forest_textures_0024_flip_h.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285214,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6854589205473857,
+            "is_seamless": false,
+            "detail_level": 58040.13620077192,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0024_bright_down.png",
+          "path": "train\\textures\\forest\\forest_textures_0024_bright_down.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285214,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6854589205473857,
+            "is_seamless": false,
+            "detail_level": 58040.13620077192,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0079.png",
+          "path": "train\\textures\\forest\\forest_textures_0079.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285066,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7467933006535947,
+            "is_seamless": false,
+            "detail_level": 57193.809581285765,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0079_rot180.png",
+          "path": "train\\textures\\forest\\forest_textures_0079_rot180.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285066,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7467933006535947,
+            "is_seamless": false,
+            "detail_level": 57193.809581285765,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0079_bright_down.png",
+          "path": "train\\textures\\forest\\forest_textures_0079_bright_down.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285066,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7467933006535947,
+            "is_seamless": false,
+            "detail_level": 57193.809581285765,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0047.png",
+          "path": "train\\textures\\forest\\forest_textures_0047.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285520,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7276810151143791,
+            "is_seamless": false,
+            "detail_level": 55710.358219997695,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0047_bright_down.png",
+          "path": "train\\textures\\forest\\forest_textures_0047_bright_down.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285520,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7276810151143791,
+            "is_seamless": false,
+            "detail_level": 55710.358219997695,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0047_flip_h.png",
+          "path": "train\\textures\\forest\\forest_textures_0047_flip_h.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285520,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7276810151143791,
+            "is_seamless": false,
+            "detail_level": 55710.358219997695,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0099.png",
+          "path": "train\\textures\\forest\\forest_textures_0099.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 282461,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7243281505310457,
+            "is_seamless": false,
+            "detail_level": 55942.42614688238,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0099_flip_h.png",
+          "path": "train\\textures\\forest\\forest_textures_0099_flip_h.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 282461,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7243281505310457,
+            "is_seamless": false,
+            "detail_level": 55942.42614688238,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0099_rot180.png",
+          "path": "train\\textures\\forest\\forest_textures_0099_rot180.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 282461,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7243281505310457,
+            "is_seamless": false,
+            "detail_level": 55942.42614688238,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0032.png",
+          "path": "train\\textures\\forest\\forest_textures_0032.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 302275,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6868247038398693,
+            "is_seamless": false,
+            "detail_level": 68690.83401128318,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0032_bright_up.png",
+          "path": "train\\textures\\forest\\forest_textures_0032_bright_up.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 302275,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6868247038398693,
+            "is_seamless": false,
+            "detail_level": 68690.83401128318,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0032_rot270.png",
+          "path": "train\\textures\\forest\\forest_textures_0032_rot270.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 302275,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6868247038398693,
+            "is_seamless": false,
+            "detail_level": 68690.83401128318,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0067.png",
+          "path": "train\\textures\\forest\\forest_textures_0067.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 284996,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7663697406045752,
+            "is_seamless": false,
+            "detail_level": 56492.65093207859,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0067_flip_h.png",
+          "path": "train\\textures\\forest\\forest_textures_0067_flip_h.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 284996,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7663697406045752,
+            "is_seamless": false,
+            "detail_level": 56492.65093207859,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0067_bright_up.png",
+          "path": "train\\textures\\forest\\forest_textures_0067_bright_up.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 284996,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7663697406045752,
+            "is_seamless": false,
+            "detail_level": 56492.65093207859,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0022.png",
+          "path": "train\\textures\\forest\\forest_textures_0022.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285381,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7144226154003268,
+            "is_seamless": false,
+            "detail_level": 56296.13979934865,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0022_rot270.png",
+          "path": "train\\textures\\forest\\forest_textures_0022_rot270.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285381,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7144226154003268,
+            "is_seamless": false,
+            "detail_level": 56296.13979934865,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0022_flip_v.png",
+          "path": "train\\textures\\forest\\forest_textures_0022_flip_v.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285381,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7144226154003268,
+            "is_seamless": false,
+            "detail_level": 56296.13979934865,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0009.png",
+          "path": "train\\textures\\forest\\forest_textures_0009.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 336458,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6576473141339869,
+            "is_seamless": false,
+            "detail_level": 100005.85548804009,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0009_bright_down.png",
+          "path": "train\\textures\\forest\\forest_textures_0009_bright_down.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 336458,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6576473141339869,
+            "is_seamless": false,
+            "detail_level": 100005.85548804009,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0009_rot90.png",
+          "path": "train\\textures\\forest\\forest_textures_0009_rot90.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 336458,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6576473141339869,
+            "is_seamless": false,
+            "detail_level": 100005.85548804009,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0011.png",
+          "path": "train\\textures\\forest\\forest_textures_0011.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 337297,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7187882965686274,
+            "is_seamless": false,
+            "detail_level": 99542.18410229524,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0011_bright_down.png",
+          "path": "train\\textures\\forest\\forest_textures_0011_bright_down.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 337297,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7187882965686274,
+            "is_seamless": false,
+            "detail_level": 99542.18410229524,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0011_rot270.png",
+          "path": "train\\textures\\forest\\forest_textures_0011_rot270.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 337297,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7187882965686274,
+            "is_seamless": false,
+            "detail_level": 99542.18410229524,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0085.png",
+          "path": "train\\textures\\forest\\forest_textures_0085.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 335466,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6645320159313726,
+            "is_seamless": false,
+            "detail_level": 99222.12063781636,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0085_rot90.png",
+          "path": "train\\textures\\forest\\forest_textures_0085_rot90.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 335466,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6645320159313726,
+            "is_seamless": false,
+            "detail_level": 99222.12063781636,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0085_bright_up.png",
+          "path": "train\\textures\\forest\\forest_textures_0085_bright_up.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 335466,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6645320159313726,
+            "is_seamless": false,
+            "detail_level": 99222.12063781636,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0066.png",
+          "path": "train\\textures\\forest\\forest_textures_0066.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 283684,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.707136310253268,
+            "is_seamless": false,
+            "detail_level": 56916.95879726282,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0066_rot90.png",
+          "path": "train\\textures\\forest\\forest_textures_0066_rot90.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 283684,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.707136310253268,
+            "is_seamless": false,
+            "detail_level": 56916.95879726282,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0066_flip_h.png",
+          "path": "train\\textures\\forest\\forest_textures_0066_flip_h.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 283684,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.707136310253268,
+            "is_seamless": false,
+            "detail_level": 56916.95879726282,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0019.png",
+          "path": "train\\textures\\forest\\forest_textures_0019.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285410,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7332974622140522,
+            "is_seamless": false,
+            "detail_level": 58369.900718640245,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0019_flip_v.png",
+          "path": "train\\textures\\forest\\forest_textures_0019_flip_v.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285410,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7332974622140522,
+            "is_seamless": false,
+            "detail_level": 58369.900718640245,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_textures_0019_rot270.png",
+          "path": "train\\textures\\forest\\forest_textures_0019_rot270.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 285410,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7332974622140522,
+            "is_seamless": false,
+            "detail_level": 58369.900718640245,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0095.png",
+          "path": "train\\textures\\snow\\snow_textures_0095.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 57505,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.8304457720588235,
+            "is_seamless": false,
+            "detail_level": 204890.92945035425,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0095_flip_h.png",
+          "path": "train\\textures\\snow\\snow_textures_0095_flip_h.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 57505,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.8304457720588235,
+            "is_seamless": false,
+            "detail_level": 204890.92945035425,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0095_flip_v.png",
+          "path": "train\\textures\\snow\\snow_textures_0095_flip_v.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 57505,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.8304457720588235,
+            "is_seamless": false,
+            "detail_level": 204890.92945035425,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0001.png",
+          "path": "train\\textures\\snow\\snow_textures_0001.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 65544,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.828532475490196,
+            "is_seamless": false,
+            "detail_level": 210506.76499417942,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0001_rot180.png",
+          "path": "train\\textures\\snow\\snow_textures_0001_rot180.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 65544,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.828532475490196,
+            "is_seamless": false,
+            "detail_level": 210506.76499417942,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0001_rot270.png",
+          "path": "train\\textures\\snow\\snow_textures_0001_rot270.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 65544,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.828532475490196,
+            "is_seamless": false,
+            "detail_level": 210506.76499417942,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0067.png",
+          "path": "train\\textures\\snow\\snow_textures_0067.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 59544,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5048789828431373,
+            "is_seamless": false,
+            "detail_level": 204096.67241169183,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0067_bright_up.png",
+          "path": "train\\textures\\snow\\snow_textures_0067_bright_up.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 59544,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5048789828431373,
+            "is_seamless": false,
+            "detail_level": 204096.67241169183,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0067_flip_v.png",
+          "path": "train\\textures\\snow\\snow_textures_0067_flip_v.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 59544,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5048789828431373,
+            "is_seamless": false,
+            "detail_level": 204096.67241169183,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0026.png",
+          "path": "train\\textures\\snow\\snow_textures_0026.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 68719,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7689287173202615,
+            "is_seamless": false,
+            "detail_level": 203795.7139451481,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0026_rot180.png",
+          "path": "train\\textures\\snow\\snow_textures_0026_rot180.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 68719,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7689287173202615,
+            "is_seamless": false,
+            "detail_level": 203795.7139451481,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0026_flip_v.png",
+          "path": "train\\textures\\snow\\snow_textures_0026_flip_v.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 68719,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7689287173202615,
+            "is_seamless": false,
+            "detail_level": 203795.7139451481,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0035.png",
+          "path": "train\\textures\\snow\\snow_textures_0035.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 51220,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7022729013480392,
+            "is_seamless": false,
+            "detail_level": 200611.69422955767,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0035_rot180.png",
+          "path": "train\\textures\\snow\\snow_textures_0035_rot180.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 51220,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7022729013480392,
+            "is_seamless": false,
+            "detail_level": 200611.69422955767,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0035_rot270.png",
+          "path": "train\\textures\\snow\\snow_textures_0035_rot270.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 51220,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7022729013480392,
+            "is_seamless": false,
+            "detail_level": 200611.69422955767,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0006.png",
+          "path": "train\\textures\\snow\\snow_textures_0006.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 52674,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7262783394607844,
+            "is_seamless": false,
+            "detail_level": 205211.7119867007,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0006_bright_up.png",
+          "path": "train\\textures\\snow\\snow_textures_0006_bright_up.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 52674,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7262783394607844,
+            "is_seamless": false,
+            "detail_level": 205211.7119867007,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0006_rot90.png",
+          "path": "train\\textures\\snow\\snow_textures_0006_rot90.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 52674,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7262783394607844,
+            "is_seamless": false,
+            "detail_level": 205211.7119867007,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0009.png",
+          "path": "train\\textures\\snow\\snow_textures_0009.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 49299,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7490176930147059,
+            "is_seamless": false,
+            "detail_level": 198136.37590624654,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0009_rot270.png",
+          "path": "train\\textures\\snow\\snow_textures_0009_rot270.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 49299,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7490176930147059,
+            "is_seamless": false,
+            "detail_level": 198136.37590624654,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0009_bright_down.png",
+          "path": "train\\textures\\snow\\snow_textures_0009_bright_down.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 49299,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7490176930147059,
+            "is_seamless": false,
+            "detail_level": 198136.37590624654,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0022.png",
+          "path": "train\\textures\\snow\\snow_textures_0022.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 74535,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.590899969362745,
+            "is_seamless": false,
+            "detail_level": 203248.153029393,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0022_flip_h.png",
+          "path": "train\\textures\\snow\\snow_textures_0022_flip_h.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 74535,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.590899969362745,
+            "is_seamless": false,
+            "detail_level": 203248.153029393,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "snow_textures_0022_rot270.png",
+          "path": "train\\textures\\snow\\snow_textures_0022_rot270.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 74535,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.590899969362745,
+            "is_seamless": false,
+            "detail_level": 203248.153029393,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "volcanic_textures_0033.png",
+          "path": "train\\textures\\volcanic\\volcanic_textures_0033.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 189385,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5188656556372548,
+            "is_seamless": false,
+            "detail_level": 98016.62588004422,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "volcanic_textures_0033_rot90.png",
+          "path": "train\\textures\\volcanic\\volcanic_textures_0033_rot90.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 189385,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5188656556372548,
+            "is_seamless": false,
+            "detail_level": 98016.62588004422,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "volcanic_textures_0033_flip_v.png",
+          "path": "train\\textures\\volcanic\\volcanic_textures_0033_flip_v.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 189385,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5188656556372548,
+            "is_seamless": false,
+            "detail_level": 98016.62588004422,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "volcanic_textures_0060.png",
+          "path": "train\\textures\\volcanic\\volcanic_textures_0060.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 224530,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6727053972630719,
+            "is_seamless": false,
+            "detail_level": 227762.59180325514,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "volcanic_textures_0060_flip_v.png",
+          "path": "train\\textures\\volcanic\\volcanic_textures_0060_flip_v.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 224530,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6727053972630719,
+            "is_seamless": false,
+            "detail_level": 227762.59180325514,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "volcanic_textures_0060_rot270.png",
+          "path": "train\\textures\\volcanic\\volcanic_textures_0060_rot270.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 224530,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6727053972630719,
+            "is_seamless": false,
+            "detail_level": 227762.59180325514,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "volcanic_textures_0002.png",
+          "path": "train\\textures\\volcanic\\volcanic_textures_0002.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 195536,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5243728298611111,
+            "is_seamless": false,
+            "detail_level": 157402.50174846145,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "volcanic_textures_0002_bright_down.png",
+          "path": "train\\textures\\volcanic\\volcanic_textures_0002_bright_down.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 195536,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5243728298611111,
+            "is_seamless": false,
+            "detail_level": 157402.50174846145,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "volcanic_textures_0002_bright_up.png",
+          "path": "train\\textures\\volcanic\\volcanic_textures_0002_bright_up.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 195536,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5243728298611111,
+            "is_seamless": false,
+            "detail_level": 157402.50174846145,
+            "pattern_regularity": 0.0
+          },
+          "is_augmented": true
+        },
+        {
+          "filename": "forest_sprites_0004.png",
+          "path": "train\\sprites\\forest\\forest_sprites_0004.png",
+          "asset_type": "sprites",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 7385,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "forest_sprites_0020.png",
+          "path": "train\\sprites\\forest\\forest_sprites_0020.png",
+          "asset_type": "sprites",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 1240,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "snow_sprites_0003.png",
+          "path": "train\\sprites\\snow\\snow_sprites_0003.png",
+          "asset_type": "sprites",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 5025,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0019.png",
+          "path": "train\\sprites\\volcanic\\volcanic_sprites_0019.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 11118,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0031.png",
+          "path": "train\\sprites\\volcanic\\volcanic_sprites_0031.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 11273,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0027.png",
+          "path": "train\\sprites\\volcanic\\volcanic_sprites_0027.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 10925,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0047.png",
+          "path": "train\\sprites\\volcanic\\volcanic_sprites_0047.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 11012,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0066.png",
+          "path": "train\\sprites\\volcanic\\volcanic_sprites_0066.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 10958,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0016.png",
+          "path": "train\\sprites\\volcanic\\volcanic_sprites_0016.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 11056,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0032.png",
+          "path": "train\\sprites\\volcanic\\volcanic_sprites_0032.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 10774,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0018.png",
+          "path": "train\\sprites\\volcanic\\volcanic_sprites_0018.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 10759,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0022.png",
+          "path": "train\\sprites\\volcanic\\volcanic_sprites_0022.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 11116,
+          "color_mode": "RGBA",
+          "properties": {}
+        }
+      ]
+    },
+    "val": {
+      "num_files": 9,
+      "files": [
+        {
+          "filename": "desert_textures_0005.png",
+          "path": "val\\textures\\desert\\desert_textures_0005.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 258561,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6369370404411765,
+            "is_seamless": false,
+            "detail_level": 145348.76436600747,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0098.png",
+          "path": "val\\textures\\forest\\forest_textures_0098.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 336343,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7059860089869281,
+            "is_seamless": false,
+            "detail_level": 98083.10463808458,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0075.png",
+          "path": "val\\textures\\forest\\forest_textures_0075.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 302100,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7212142565359477,
+            "is_seamless": false,
+            "detail_level": 67443.93186023926,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0062.png",
+          "path": "val\\textures\\forest\\forest_textures_0062.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 301957,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.644909237132353,
+            "is_seamless": false,
+            "detail_level": 66983.9651968813,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0010.png",
+          "path": "val\\textures\\snow\\snow_textures_0010.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 49142,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.8874739583333333,
+            "is_seamless": false,
+            "detail_level": 201634.22167298436,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0083.png",
+          "path": "val\\textures\\snow\\snow_textures_0083.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 52755,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.643507199754902,
+            "is_seamless": false,
+            "detail_level": 201434.51817024447,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "volcanic_textures_0008.png",
+          "path": "val\\textures\\volcanic\\volcanic_textures_0008.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 232689,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6774439593545751,
+            "is_seamless": false,
+            "detail_level": 140292.73140983886,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "volcanic_sprites_0091.png",
+          "path": "val\\sprites\\volcanic\\volcanic_sprites_0091.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 10814,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0000.png",
+          "path": "val\\sprites\\volcanic\\volcanic_sprites_0000.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 10848,
+          "color_mode": "RGBA",
+          "properties": {}
+        }
+      ]
+    },
+    "test": {
+      "num_files": 9,
+      "files": [
+        {
+          "filename": "desert_textures_0001.png",
+          "path": "test\\textures\\desert\\desert_textures_0001.png",
+          "asset_type": "textures",
+          "biome": "desert",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 145400,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5822497957516339,
+            "is_seamless": false,
+            "detail_level": 218241.03410187212,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0031.png",
+          "path": "test\\textures\\forest\\forest_textures_0031.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 284668,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7928986672794117,
+            "is_seamless": false,
+            "detail_level": 56649.89111839447,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0068.png",
+          "path": "test\\textures\\forest\\forest_textures_0068.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 300799,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7373353247549019,
+            "is_seamless": false,
+            "detail_level": 68560.10275812456,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "forest_textures_0001.png",
+          "path": "test\\textures\\forest\\forest_textures_0001.png",
+          "asset_type": "textures",
+          "biome": "forest",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 300392,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.7599055351307189,
+            "is_seamless": false,
+            "detail_level": 69856.89651796845,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0094.png",
+          "path": "test\\textures\\snow\\snow_textures_0094.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 57714,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.5895301011029412,
+            "is_seamless": false,
+            "detail_level": 203476.19344362908,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "snow_textures_0092.png",
+          "path": "test\\textures\\snow\\snow_textures_0092.png",
+          "asset_type": "textures",
+          "biome": "snow",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 51856,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.6403580729166667,
+            "is_seamless": false,
+            "detail_level": 203123.2060335161,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "volcanic_textures_0006.png",
+          "path": "test\\textures\\volcanic\\volcanic_textures_0006.png",
+          "asset_type": "textures",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 246155,
+          "color_mode": "RGB",
+          "properties": {
+            "seamless_score": 0.58175883374183,
+            "is_seamless": false,
+            "detail_level": 186707.40389469132,
+            "pattern_regularity": 0.0
+          }
+        },
+        {
+          "filename": "volcanic_sprites_0085.png",
+          "path": "test\\sprites\\volcanic\\volcanic_sprites_0085.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 11107,
+          "color_mode": "RGBA",
+          "properties": {}
+        },
+        {
+          "filename": "volcanic_sprites_0061.png",
+          "path": "test\\sprites\\volcanic\\volcanic_sprites_0061.png",
+          "asset_type": "sprites",
+          "biome": "volcanic",
+          "resolution": [
+            512,
+            512
+          ],
+          "file_size": 10727,
+          "color_mode": "RGBA",
+          "properties": {}
+        }
+      ]
+    }
+  }
+}

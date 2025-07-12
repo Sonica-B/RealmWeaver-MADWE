@@ -1,0 +1,9 @@
+val\textures\desert\desert_textures_0005.png
+val\textures\forest\forest_textures_0098.png
+val\textures\forest\forest_textures_0075.png
+val\textures\forest\forest_textures_0062.png
+val\textures\snow\snow_textures_0010.png
+val\textures\snow\snow_textures_0083.png
+val\textures\volcanic\volcanic_textures_0008.png
+val\sprites\volcanic\volcanic_sprites_0091.png
+val\sprites\volcanic\volcanic_sprites_0000.png

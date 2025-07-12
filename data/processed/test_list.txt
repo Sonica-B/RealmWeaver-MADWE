@@ -1,0 +1,9 @@
+test\textures\desert\desert_textures_0001.png
+test\textures\forest\forest_textures_0031.png
+test\textures\forest\forest_textures_0068.png
+test\textures\forest\forest_textures_0001.png
+test\textures\snow\snow_textures_0094.png
+test\textures\snow\snow_textures_0092.png
+test\textures\volcanic\volcanic_textures_0006.png
+test\sprites\volcanic\volcanic_sprites_0085.png
+test\sprites\volcanic\volcanic_sprites_0061.png

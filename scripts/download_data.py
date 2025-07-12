@@ -1,5 +1,5 @@
 """
-Enhanced synthetic game asset generator with detailed textures and sprites - Python 3.13.5 compatible
+Enhanced synthetic game asset generator with detailed textures and sprites
 Generates production-quality game assets with proper seamless tiling, detailed sprites, and biome-specific patterns
 """
 
@@ -15,6 +15,7 @@ import math
 import random
 from scipy.ndimage import gaussian_filter
 from scipy import ndimage
+import noise  # For Perlin noise
 
 
 class DetailedAssetGenerator:
@@ -75,887 +76,541 @@ class DetailedAssetGenerator:
                     (135, 206, 235),
                     (245, 245, 245),
                 ],
-                "accent_colors": [(70, 130, 180), (100, 149, 237), (173, 216, 230)],
+                "accent_colors": [(70, 130, 180), (100, 149, 237), (192, 192, 192)],
                 "patterns": [
                     "ice_crystals",
-                    "snowflake",
+                    "snow_drift",
                     "frozen_surface",
-                    "blizzard_texture",
+                    "frost_pattern",
                 ],
-                "sprite_themes": ["ice_warrior", "frost_mage", "snow_beast"],
-                "items": ["ice_sword", "frost_gem", "snowflake_charm", "frozen_orb"],
+                "sprite_themes": ["ice_warrior", "frost_mage", "snow_spirit"],
+                "items": ["ice_shard", "frost_orb", "frozen_blade", "snow_crystal"],
             },
             "volcanic": {
                 "primary_colors": [
-                    (178, 34, 34),
-                    (255, 69, 0),
                     (139, 0, 0),
-                    (255, 87, 34),
+                    (255, 69, 0),
+                    (178, 34, 34),
+                    (255, 140, 0),
                 ],
-                "accent_colors": [(255, 140, 0), (255, 165, 0), (128, 0, 0)],
-                "patterns": [
-                    "lava_flow",
-                    "volcanic_rock",
-                    "ember_scatter",
-                    "magma_cracks",
-                ],
-                "sprite_themes": ["fire_elemental", "lava_golem", "flame_spirit"],
-                "items": ["flame_sword", "lava_crystal", "ember_stone", "fire_staff"],
+                "accent_colors": [(64, 64, 64), (105, 105, 105), (255, 215, 0)],
+                "patterns": ["lava_flow", "obsidian", "magma_cracks", "volcanic_rock"],
+                "sprite_themes": ["fire_demon", "magma_golem", "flame_dancer"],
+                "items": ["lava_gem", "obsidian_blade", "fire_crystal", "molten_core"],
             },
             "underwater": {
                 "primary_colors": [
                     (0, 119, 190),
-                    (0, 191, 255),
-                    (70, 130, 180),
-                    (0, 150, 136),
+                    (0, 150, 199),
+                    (0, 180, 216),
+                    (129, 204, 255),
                 ],
-                "accent_colors": [(72, 209, 204), (64, 224, 208), (0, 206, 209)],
+                "accent_colors": [(0, 71, 119), (46, 134, 171), (144, 224, 239)],
                 "patterns": [
-                    "wave_pattern",
-                    "coral_growth",
+                    "coral_reef",
+                    "water_caustics",
+                    "seaweed",
                     "bubble_stream",
-                    "seaweed_flow",
                 ],
-                "sprite_themes": ["sea_guardian", "water_elemental", "mer_warrior"],
-                "items": ["trident", "pearl", "sea_crystal", "conch_shell"],
+                "sprite_themes": ["merfolk", "sea_guardian", "aqua_elemental"],
+                "items": ["pearl", "trident", "coral_staff", "sea_crystal"],
             },
             "sky": {
                 "primary_colors": [
                     (135, 206, 250),
+                    (176, 224, 230),
                     (255, 255, 255),
-                    (176, 196, 222),
-                    (100, 149, 237),
+                    (173, 216, 230),
                 ],
-                "accent_colors": [(255, 215, 0), (255, 255, 224), (230, 230, 250)],
-                "patterns": [
-                    "cloud_formation",
-                    "wind_current",
-                    "lightning_pattern",
-                    "celestial_glow",
-                ],
-                "sprite_themes": ["sky_guardian", "wind_spirit", "cloud_walker"],
-                "items": [
-                    "wind_staff",
-                    "cloud_essence",
-                    "lightning_bolt",
-                    "celestial_orb",
-                ],
+                "accent_colors": [(255, 215, 0), (255, 182, 193), (221, 160, 221)],
+                "patterns": ["cloud_formation", "aurora", "star_field", "wind_current"],
+                "sprite_themes": ["sky_dancer", "wind_rider", "celestial_being"],
+                "items": ["feather", "wind_gem", "cloud_essence", "star_fragment"],
             },
         }
 
     def generate_perlin_noise(
-        self, width: int, height: int, scale: float = 0.1, octaves: int = 4
+        self, width: int, height: int, scale: float = 0.1, octaves: int = 6
     ) -> np.ndarray:
-        """Generate proper Perlin noise for natural textures"""
+        """Generate Perlin noise for natural-looking textures"""
+        noise_array = np.zeros((width, height))
 
-        def fade(t):
-            return t * t * t * (t * (t * 6 - 15) + 10)
+        for i in range(width):
+            for j in range(height):
+                noise_array[i][j] = noise.pnoise2(
+                    i * scale,
+                    j * scale,
+                    octaves=octaves,
+                    persistence=0.5,
+                    lacunarity=2.0,
+                    repeatx=width,
+                    repeaty=height,
+                    base=0,
+                )
 
-        def lerp(t, a, b):
-            return a + t * (b - a)
+        # Normalize to 0-1 range
+        noise_array = (noise_array - noise_array.min()) / (
+            noise_array.max() - noise_array.min()
+        )
+        return noise_array
 
-        def grad(h, x, y):
-            vectors = [(0, 1), (0, -1), (1, 0), (-1, 0)]
-            g = vectors[h % 4]
-            return g[0] * x + g[1] * y
+    def create_seamless_texture(self, texture_func: callable, biome: str) -> np.ndarray:
+        """Create seamless tiling texture using overlap blending"""
+        # Generate larger texture
+        overlap = 64
+        large_size = (self.width + overlap * 2, self.height + overlap * 2)
 
-        noise = np.zeros((width, height))
-
-        for octave in range(octaves):
-            freq = scale * (2**octave)
-            amp = 1.0 / (2**octave)
-
-            for i in range(width):
-                for j in range(height):
-                    x = i * freq
-                    y = j * freq
-
-                    x_floor = int(x)
-                    y_floor = int(y)
-
-                    x_frac = x - x_floor
-                    y_frac = y - y_floor
-
-                    # Get gradients at corners
-                    n00 = grad(x_floor + y_floor * 57, x_frac, y_frac)
-                    n01 = grad(x_floor + (y_floor + 1) * 57, x_frac, y_frac - 1)
-                    n10 = grad(x_floor + 1 + y_floor * 57, x_frac - 1, y_frac)
-                    n11 = grad(x_floor + 1 + (y_floor + 1) * 57, x_frac - 1, y_frac - 1)
-
-                    # Interpolate
-                    nx0 = lerp(fade(x_frac), n00, n10)
-                    nx1 = lerp(fade(x_frac), n01, n11)
-                    value = lerp(fade(y_frac), nx0, nx1)
-
-                    noise[i, j] += value * amp
-
-        return noise
-
-    def create_seamless_texture(self, pattern_func, biome: str, **kwargs) -> np.ndarray:
-        """Create seamless tiling texture using edge blending"""
         # Generate base texture
-        base_texture = pattern_func(biome, **kwargs)
+        base_texture = texture_func(biome)
 
-        # Create seamless version by blending edges
-        overlap = 32  # Overlap region for seamless tiling
+        # Create seamless edges
+        result = np.copy(base_texture)
 
         # Blend horizontal edges
         for i in range(overlap):
             alpha = i / overlap
-            for j in range(self.height):
-                # Blend left edge with right edge
-                base_texture[i, j] = (
-                    alpha * base_texture[i, j]
-                    + (1 - alpha) * base_texture[self.width - overlap + i, j]
-                )
+            result[i, :] = (1 - alpha) * base_texture[
+                -overlap + i, :
+            ] + alpha * base_texture[i, :]
+            result[-overlap + i, :] = (1 - alpha) * base_texture[
+                i, :
+            ] + alpha * base_texture[-overlap + i, :]
 
         # Blend vertical edges
         for j in range(overlap):
             alpha = j / overlap
+            result[:, j] = (1 - alpha) * result[:, -overlap + j] + alpha * result[:, j]
+            result[:, -overlap + j] = (1 - alpha) * result[:, j] + alpha * result[
+                :, -overlap + j
+            ]
+
+        return result
+
+    def create_detailed_texture(self, biome: str, pattern: str) -> np.ndarray:
+        """Create detailed texture based on biome and pattern"""
+        config = self.biome_configs[biome]
+        texture = np.zeros((self.width, self.height, 3))
+
+        if pattern == "bark_texture":
+            # Create vertical bark lines with variation
+            base_color = random.choice(config["accent_colors"])
             for i in range(self.width):
-                # Blend top edge with bottom edge
-                base_texture[i, j] = (
-                    alpha * base_texture[i, j]
-                    + (1 - alpha) * base_texture[i, self.height - overlap + j]
-                )
+                column_variation = random.uniform(0.8, 1.2)
+                for j in range(self.height):
+                    # Add vertical streaks
+                    streak = math.sin(j * 0.1) * 0.3 + 0.7
+                    noise_val = self.generate_perlin_noise(32, 32, 0.2)[i % 32, j % 32]
 
-        return base_texture
+                    color_factor = streak * column_variation * (0.7 + 0.3 * noise_val)
+                    texture[i, j] = [int(c * color_factor) for c in base_color]
 
-    def generate_bark_texture(self, biome: str) -> np.ndarray:
-        """Generate realistic bark texture for forest biome"""
-        config = self.biome_configs[biome]
-        base_color = random.choice(config["primary_colors"])
-        accent_color = random.choice(config["accent_colors"])
+        elif pattern == "sand_dunes":
+            # Create wavy sand dune patterns
+            base_color = random.choice(config["primary_colors"])
+            dune_noise = self.generate_perlin_noise(
+                self.width, self.height, 0.02, octaves=4
+            )
 
-        # Create base noise
-        noise = self.generate_perlin_noise(
-            self.width, self.height, scale=0.02, octaves=6
-        )
-        detail_noise = self.generate_perlin_noise(
-            self.width, self.height, scale=0.1, octaves=3
-        )
+            for i in range(self.width):
+                for j in range(self.height):
+                    # Create dune ridges
+                    dune_factor = math.sin(i * 0.05 + dune_noise[i, j] * 10) * 0.5 + 0.5
+                    shadow = 1.0 if dune_factor > 0.5 else 0.85
 
-        # Create vertical bark lines
-        vertical_lines = np.zeros((self.width, self.height, 3))
-        for i in range(self.width):
-            line_intensity = np.sin(i * 0.1 + noise[i, 0] * 2) * 0.3 + 0.7
-            for j in range(self.height):
-                bark_variation = noise[i, j] * 0.4 + detail_noise[i, j] * 0.2
-
-                color = [
-                    int(base_color[0] * (line_intensity + bark_variation)),
-                    int(base_color[1] * (line_intensity + bark_variation)),
-                    int(base_color[2] * (line_intensity + bark_variation)),
-                ]
-
-                # Add accent color highlights
-                if bark_variation > 0.3:
-                    blend_factor = (bark_variation - 0.3) * 2
-                    color = [
-                        int(
-                            color[0] * (1 - blend_factor)
-                            + accent_color[0] * blend_factor
-                        ),
-                        int(
-                            color[1] * (1 - blend_factor)
-                            + accent_color[1] * blend_factor
-                        ),
-                        int(
-                            color[2] * (1 - blend_factor)
-                            + accent_color[2] * blend_factor
-                        ),
+                    texture[i, j] = [
+                        int(c * shadow * (0.9 + 0.1 * dune_noise[i, j]))
+                        for c in base_color
                     ]
 
-                vertical_lines[i, j] = [max(0, min(255, c)) for c in color]
+        elif pattern == "ice_crystals":
+            # Create crystalline ice patterns
+            base_color = random.choice(config["primary_colors"])
+            crystal_centers = [
+                (random.randint(0, self.width), random.randint(0, self.height))
+                for _ in range(15)
+            ]
 
-        return vertical_lines
+            for i in range(self.width):
+                for j in range(self.height):
+                    # Find nearest crystal center
+                    min_dist = float("inf")
+                    for cx, cy in crystal_centers:
+                        dist = math.sqrt((i - cx) ** 2 + (j - cy) ** 2)
+                        min_dist = min(min_dist, dist)
 
-    def generate_sand_dunes(self, biome: str) -> np.ndarray:
-        """Generate sand dune texture for desert biome"""
-        config = self.biome_configs[biome]
-        base_color = random.choice(config["primary_colors"])
+                    # Create crystalline effect
+                    crystal_factor = max(0, 1 - min_dist / 50)
+                    sparkle = random.uniform(0.9, 1.1) if crystal_factor > 0.7 else 1.0
 
-        # Create dune patterns using multiple noise layers
-        large_dunes = self.generate_perlin_noise(
-            self.width, self.height, scale=0.01, octaves=3
-        )
-        medium_dunes = self.generate_perlin_noise(
-            self.width, self.height, scale=0.05, octaves=4
-        )
-        fine_sand = self.generate_perlin_noise(
-            self.width, self.height, scale=0.2, octaves=2
-        )
+                    texture[i, j] = [
+                        int(c * (0.8 + 0.2 * crystal_factor) * sparkle)
+                        for c in base_color
+                    ]
 
-        texture = np.zeros((self.width, self.height, 3))
+        elif pattern == "lava_flow":
+            # Create flowing lava patterns
+            primary = random.choice(config["primary_colors"])
+            accent = random.choice(config["accent_colors"])
 
-        for i in range(self.width):
-            for j in range(self.height):
-                # Combine noise layers for realistic sand appearance
-                dune_height = (
-                    large_dunes[i, j] * 0.5
-                    + medium_dunes[i, j] * 0.3
-                    + fine_sand[i, j] * 0.2
-                )
+            flow_noise = self.generate_perlin_noise(
+                self.width, self.height, 0.05, octaves=3
+            )
+            heat_noise = self.generate_perlin_noise(
+                self.width, self.height, 0.1, octaves=2
+            )
 
-                # Create color variation based on dune height (shadows and highlights)
-                brightness = 0.7 + dune_height * 0.6
+            for i in range(self.width):
+                for j in range(self.height):
+                    # Create lava flow effect
+                    flow = flow_noise[i, j]
+                    heat = heat_noise[i, j]
 
-                color = [
-                    int(base_color[0] * brightness),
-                    int(base_color[1] * brightness),
-                    int(base_color[2] * brightness),
-                ]
+                    if flow > 0.6:  # Hot lava
+                        color = primary
+                        brightness = 0.8 + 0.2 * heat
+                    else:  # Cooled lava
+                        color = accent
+                        brightness = 0.6 + 0.2 * heat
 
-                # Add wind pattern streaks
-                wind_pattern = np.sin(i * 0.05 + j * 0.02) * 0.1
-                color = [max(0, min(255, c + wind_pattern * 20)) for c in color]
+                    texture[i, j] = [int(c * brightness) for c in color]
 
-                texture[i, j] = color
+        elif pattern == "water_caustics":
+            # Create underwater light patterns
+            base_color = random.choice(config["primary_colors"])
 
-        return texture
+            # Generate multiple layers of caustics
+            caustic1 = self.generate_perlin_noise(
+                self.width, self.height, 0.03, octaves=2
+            )
+            caustic2 = self.generate_perlin_noise(
+                self.width, self.height, 0.05, octaves=2
+            )
 
-    def generate_ice_crystals(self, biome: str) -> np.ndarray:
-        """Generate ice crystal texture for snow biome"""
-        config = self.biome_configs[biome]
-        base_color = random.choice(config["primary_colors"])
-        accent_color = random.choice(config["accent_colors"])
+            for i in range(self.width):
+                for j in range(self.height):
+                    # Combine caustic layers
+                    caustic = (caustic1[i, j] + caustic2[i, j]) * 0.5
+                    brightness = 0.7 + 0.3 * caustic
 
-        texture = np.full((self.width, self.height, 3), base_color, dtype=float)
+                    # Add wave distortion
+                    wave = math.sin(i * 0.1) * math.sin(j * 0.1) * 0.1 + 0.9
 
-        # Generate crystalline patterns
-        num_crystals = random.randint(20, 40)
+                    texture[i, j] = [int(c * brightness * wave) for c in base_color]
 
-        for _ in range(num_crystals):
-            center_x = random.randint(0, self.width)
-            center_y = random.randint(0, self.height)
-            size = random.randint(20, 80)
-            angles = random.randint(6, 12)  # Crystal facets
+        else:
+            # Default pattern with Perlin noise
+            base_color = random.choice(config["primary_colors"])
+            pattern_noise = self.generate_perlin_noise(self.width, self.height, 0.05)
 
-            # Draw crystal pattern
-            for angle in range(angles):
-                theta = (angle / angles) * 2 * math.pi
-                end_x = center_x + size * math.cos(theta)
-                end_y = center_y + size * math.sin(theta)
-
-                # Create crystal ray
-                for t in np.linspace(0, 1, size):
-                    x = int(center_x + t * (end_x - center_x))
-                    y = int(center_y + t * (end_y - center_y))
-
-                    if 0 <= x < self.width and 0 <= y < self.height:
-                        # Crystal glow effect
-                        intensity = 1 - t
-                        blend_factor = intensity * 0.7
-
-                        texture[x, y] = [
-                            texture[x, y, 0] * (1 - blend_factor)
-                            + accent_color[0] * blend_factor,
-                            texture[x, y, 1] * (1 - blend_factor)
-                            + accent_color[1] * blend_factor,
-                            texture[x, y, 2] * (1 - blend_factor)
-                            + accent_color[2] * blend_factor,
-                        ]
-
-        # Add ice noise
-        ice_noise = self.generate_perlin_noise(
-            self.width, self.height, scale=0.1, octaves=4
-        )
-        for i in range(self.width):
-            for j in range(self.height):
-                noise_factor = ice_noise[i, j] * 0.3
-                texture[i, j] = [
-                    max(0, min(255, c + noise_factor * 50)) for c in texture[i, j]
-                ]
+            for i in range(self.width):
+                for j in range(self.height):
+                    brightness = 0.5 + pattern_noise[i, j] * 0.5
+                    texture[i, j] = [int(c * brightness) for c in base_color]
 
         return texture.astype(np.uint8)
-
-    def generate_lava_flow(self, biome: str) -> np.ndarray:
-        """Generate lava flow texture for volcanic biome"""
-        config = self.biome_configs[biome]
-        base_color = random.choice(config["primary_colors"])
-        accent_color = random.choice(config["accent_colors"])
-
-        # Create flowing lava pattern
-        flow_noise = self.generate_perlin_noise(
-            self.width, self.height, scale=0.03, octaves=5
-        )
-        heat_noise = self.generate_perlin_noise(
-            self.width, self.height, scale=0.1, octaves=3
-        )
-
-        texture = np.zeros((self.width, self.height, 3))
-
-        for i in range(self.width):
-            for j in range(self.height):
-                # Create flowing pattern
-                flow_intensity = flow_noise[i, j]
-                heat_level = heat_noise[i, j]
-
-                # Lava flow direction (generally downward)
-                flow_direction = np.sin(i * 0.02) * 0.5 + flow_intensity * 0.5
-
-                if flow_direction > 0.2:  # Active lava
-                    # Bright, hot lava
-                    brightness = 0.8 + heat_level * 0.4
-                    color = [
-                        int(accent_color[0] * brightness),
-                        int(accent_color[1] * brightness),
-                        int(accent_color[2] * brightness),
-                    ]
-                else:  # Cooled lava/rock
-                    brightness = 0.3 + flow_intensity * 0.3
-                    color = [
-                        int(base_color[0] * brightness),
-                        int(base_color[1] * brightness),
-                        int(base_color[2] * brightness),
-                    ]
-
-                # Add ember effects
-                if heat_level > 0.4:
-                    ember_glow = (heat_level - 0.4) * 100
-                    color[0] = min(255, color[0] + ember_glow)
-                    color[1] = min(255, color[1] + ember_glow * 0.5)
-
-                texture[i, j] = [max(0, min(255, c)) for c in color]
-
-        return texture
-
-    def generate_coral_growth(self, biome: str) -> np.ndarray:
-        """Generate coral texture for underwater biome"""
-        config = self.biome_configs[biome]
-        base_color = random.choice(config["primary_colors"])
-        accent_colors = config["accent_colors"]
-
-        texture = np.full((self.width, self.height, 3), base_color, dtype=float)
-
-        # Generate coral formations
-        num_corals = random.randint(15, 25)
-
-        for _ in range(num_corals):
-            center_x = random.randint(50, self.width - 50)
-            center_y = random.randint(50, self.height - 50)
-            coral_color = random.choice(accent_colors)
-
-            # Create branching coral structure
-            branches = random.randint(5, 12)
-            for branch in range(branches):
-                angle = (branch / branches) * 2 * math.pi + random.uniform(-0.5, 0.5)
-                length = random.randint(30, 80)
-
-                # Draw coral branch with organic curves
-                for t in np.linspace(0, 1, length):
-                    # Add organic curvature
-                    curve = math.sin(t * math.pi * 3) * 20
-                    x = int(
-                        center_x
-                        + t * length * math.cos(angle)
-                        + curve * math.cos(angle + math.pi / 2)
-                    )
-                    y = int(
-                        center_y
-                        + t * length * math.sin(angle)
-                        + curve * math.sin(angle + math.pi / 2)
-                    )
-
-                    if 0 <= x < self.width and 0 <= y < self.height:
-                        # Coral polyp detail
-                        polyp_size = max(1, int((1 - t) * 8))
-                        for dx in range(-polyp_size, polyp_size + 1):
-                            for dy in range(-polyp_size, polyp_size + 1):
-                                if dx * dx + dy * dy <= polyp_size * polyp_size:
-                                    px, py = x + dx, y + dy
-                                    if 0 <= px < self.width and 0 <= py < self.height:
-                                        intensity = 1 - (dx * dx + dy * dy) / (
-                                            polyp_size * polyp_size
-                                        )
-                                        texture[px, py] = [
-                                            texture[px, py, 0] * (1 - intensity)
-                                            + coral_color[0] * intensity,
-                                            texture[px, py, 1] * (1 - intensity)
-                                            + coral_color[1] * intensity,
-                                            texture[px, py, 2] * (1 - intensity)
-                                            + coral_color[2] * intensity,
-                                        ]
-
-        # Add water movement effect
-        wave_noise = self.generate_perlin_noise(
-            self.width, self.height, scale=0.05, octaves=2
-        )
-        for i in range(self.width):
-            for j in range(self.height):
-                wave_effect = wave_noise[i, j] * 20
-                texture[i, j] = [
-                    max(0, min(255, c + wave_effect)) for c in texture[i, j]
-                ]
-
-        return texture.astype(np.uint8)
-
-    def generate_cloud_formation(self, biome: str) -> np.ndarray:
-        """Generate cloud texture for sky biome"""
-        config = self.biome_configs[biome]
-        base_color = random.choice(config["primary_colors"])
-        accent_color = random.choice(config["accent_colors"])
-
-        # Create cloud layers with different densities
-        cloud_base = self.generate_perlin_noise(
-            self.width, self.height, scale=0.02, octaves=4
-        )
-        cloud_detail = self.generate_perlin_noise(
-            self.width, self.height, scale=0.08, octaves=3
-        )
-        cloud_wisps = self.generate_perlin_noise(
-            self.width, self.height, scale=0.15, octaves=2
-        )
-
-        texture = np.zeros((self.width, self.height, 3))
-
-        for i in range(self.width):
-            for j in range(self.height):
-                # Combine cloud layers
-                cloud_density = (
-                    cloud_base[i, j] * 0.6
-                    + cloud_detail[i, j] * 0.3
-                    + cloud_wisps[i, j] * 0.1
-                )
-
-                # Cloud threshold for realistic cloud shapes
-                if cloud_density > 0.1:
-                    cloud_alpha = min(1.0, (cloud_density - 0.1) * 1.5)
-
-                    # Cloud color with sunlight effects
-                    sunlight_angle = i / self.width  # Simulate sun position
-                    brightness = 0.8 + sunlight_angle * 0.4
-
-                    cloud_color = [
-                        base_color[0] * brightness,
-                        base_color[1] * brightness,
-                        base_color[2] * brightness,
-                    ]
-
-                    # Add golden hour effects
-                    if sunlight_angle > 0.7:
-                        golden_blend = (sunlight_angle - 0.7) * 3.33
-                        cloud_color = [
-                            cloud_color[0] * (1 - golden_blend)
-                            + accent_color[0] * golden_blend,
-                            cloud_color[1] * (1 - golden_blend)
-                            + accent_color[1] * golden_blend,
-                            cloud_color[2] * (1 - golden_blend)
-                            + accent_color[2] * golden_blend,
-                        ]
-
-                    texture[i, j] = [max(0, min(255, c)) for c in cloud_color]
-                else:
-                    # Sky background
-                    sky_color = [
-                        base_color[0] * 0.4,
-                        base_color[1] * 0.6,
-                        base_color[2] * 0.9,
-                    ]
-                    texture[i, j] = sky_color
-
-        return texture
 
     def create_detailed_character_sprite(
         self, biome: str, character_type: str
     ) -> np.ndarray:
-        """Generate detailed character sprites with proper anatomy and equipment"""
+        """Create detailed character sprite with proper anatomy"""
+        sprite = np.zeros((self.height, self.width, 4), dtype=np.uint8)  # RGBA
         config = self.biome_configs[biome]
-        primary_color = random.choice(config["primary_colors"])
-        accent_color = random.choice(config["accent_colors"])
 
-        # Create PIL image for detailed drawing
-        img = Image.new("RGBA", self.size, (255, 255, 255, 0))
-        draw = ImageDraw.Draw(img)
-
+        # Character dimensions
         center_x, center_y = self.width // 2, self.height // 2
 
+        # Create character based on type
         if character_type == "woodland_creature":
-            # Draw detailed woodland creature
-            # Body (oval torso)
-            body_width, body_height = 80, 120
-            draw.ellipse(
-                [
-                    center_x - body_width // 2,
-                    center_y - body_height // 2,
-                    center_x + body_width // 2,
-                    center_y + body_height // 2,
-                ],
-                fill=primary_color,
-                outline=None,
+            # Draw body
+            body_color = (101, 67, 33)  # Brown
+            self._draw_ellipse(sprite, center_x, center_y + 60, 40, 60, body_color)
+
+            # Draw head
+            self._draw_circle(sprite, center_x, center_y - 20, 35, body_color)
+
+            # Draw ears
+            self._draw_triangle(
+                sprite, center_x - 25, center_y - 40, 15, 25, body_color
+            )
+            self._draw_triangle(
+                sprite, center_x + 25, center_y - 40, 15, 25, body_color
             )
 
-            # Head (circle)
-            head_radius = 45
-            draw.ellipse(
-                [
-                    center_x - head_radius,
-                    center_y - body_height // 2 - head_radius - 20,
-                    center_x + head_radius,
-                    center_y - body_height // 2 + head_radius - 20,
-                ],
-                fill=primary_color,
-                outline=None,
+            # Draw eyes
+            eye_color = (255, 255, 255)
+            self._draw_circle(sprite, center_x - 12, center_y - 20, 8, eye_color)
+            self._draw_circle(sprite, center_x + 12, center_y - 20, 8, eye_color)
+            self._draw_circle(sprite, center_x - 12, center_y - 20, 4, (0, 0, 0))
+            self._draw_circle(sprite, center_x + 12, center_y - 20, 4, (0, 0, 0))
+
+            # Draw arms
+            self._draw_ellipse(sprite, center_x - 35, center_y + 40, 15, 40, body_color)
+            self._draw_ellipse(sprite, center_x + 35, center_y + 40, 15, 40, body_color)
+
+            # Draw legs
+            self._draw_ellipse(
+                sprite, center_x - 15, center_y + 100, 15, 30, body_color
+            )
+            self._draw_ellipse(
+                sprite, center_x + 15, center_y + 100, 15, 30, body_color
             )
 
-            # Arms
-            arm_width, arm_length = 25, 80
-            # Left arm
-            draw.ellipse(
-                [
-                    center_x - body_width // 2 - arm_width,
-                    center_y - 30,
-                    center_x - body_width // 2 + arm_width,
-                    center_y - 30 + arm_length,
-                ],
-                fill=primary_color,
-                outline=None,
+        elif character_type == "fire_demon":
+            # Fiery colors
+            body_color = (178, 34, 34)  # Firebrick
+            flame_color = (255, 69, 0)  # Orange red
+
+            # Draw flaming body
+            self._draw_flame_body(sprite, center_x, center_y, body_color, flame_color)
+
+            # Draw horns
+            horn_color = (139, 0, 0)
+            self._draw_triangle(
+                sprite, center_x - 20, center_y - 60, 10, 30, horn_color
             )
-            # Right arm
-            draw.ellipse(
-                [
-                    center_x + body_width // 2 - arm_width,
-                    center_y - 30,
-                    center_x + body_width // 2 + arm_width,
-                    center_y - 30 + arm_length,
-                ],
-                fill=primary_color,
-                outline=None,
+            self._draw_triangle(
+                sprite, center_x + 20, center_y - 60, 10, 30, horn_color
             )
 
-            # Legs
-            leg_width, leg_length = 30, 100
-            # Left leg
-            draw.ellipse(
-                [
-                    center_x - 25,
-                    center_y + body_height // 2 - 20,
-                    center_x - 25 + leg_width,
-                    center_y + body_height // 2 - 20 + leg_length,
-                ],
-                fill=primary_color,
-                outline=None,
-            )
-            # Right leg
-            draw.ellipse(
-                [
-                    center_x - 5,
-                    center_y + body_height // 2 - 20,
-                    center_x - 5 + leg_width,
-                    center_y + body_height // 2 - 20 + leg_length,
-                ],
-                fill=primary_color,
-                outline=None,
+            # Draw glowing eyes
+            self._draw_circle(sprite, center_x - 15, center_y - 30, 10, flame_color)
+            self._draw_circle(sprite, center_x + 15, center_y - 30, 10, flame_color)
+
+        elif character_type == "ice_warrior":
+            # Icy colors
+            armor_color = (176, 224, 230)  # Powder blue
+            ice_color = (135, 206, 235)  # Sky blue
+
+            # Draw armored body
+            self._draw_rectangle(
+                sprite, center_x - 30, center_y - 20, 60, 80, armor_color
             )
 
-            # Equipment/accessories
-            # Woodland cloak
-            cloak_points = [
-                (center_x - 60, center_y - 80),
-                (center_x + 60, center_y - 80),
-                (center_x + 40, center_y + 100),
-                (center_x - 40, center_y + 100),
-            ]
-            draw.polygon(cloak_points, fill=accent_color, outline=None)
+            # Draw helmet
+            self._draw_ellipse(sprite, center_x, center_y - 50, 35, 40, ice_color)
 
-            # Nature staff
-            staff_top_x = center_x + 70
-            staff_top_y = center_y - 150
-            staff_bottom_x = center_x + 85
-            staff_bottom_y = center_y + 50
-            draw.line(
-                [(staff_top_x, staff_top_y), (staff_bottom_x, staff_bottom_y)],
-                fill=(139, 69, 19),
-                width=8,
+            # Draw ice spikes on shoulders
+            self._draw_triangle(sprite, center_x - 40, center_y - 10, 15, 30, ice_color)
+            self._draw_triangle(sprite, center_x + 40, center_y - 10, 15, 30, ice_color)
+
+            # Draw legs
+            self._draw_rectangle(
+                sprite, center_x - 20, center_y + 60, 15, 40, armor_color
+            )
+            self._draw_rectangle(
+                sprite, center_x + 5, center_y + 60, 15, 40, armor_color
             )
 
-            # Staff crystal
-            draw.ellipse(
-                [
-                    staff_top_x - 15,
-                    staff_top_y - 15,
-                    staff_top_x + 15,
-                    staff_top_y + 15,
-                ],
-                fill=(0, 255, 127),
-                outline=None,
-            )
+        # Apply anti-aliasing
+        sprite = self._apply_antialiasing(sprite)
 
-        elif character_type == "desert_nomad":
-            # Desert warrior with robes and weapons
-            # Body
-            draw.ellipse(
-                [center_x - 40, center_y - 60, center_x + 40, center_y + 60],
-                fill=primary_color,
-                outline=None,
-            )
-
-            # Head with headwrap
-            draw.ellipse(
-                [center_x - 35, center_y - 120, center_x + 35, center_y - 50],
-                fill=accent_color,
-                outline=None,
-            )
-
-            # Desert robes (flowing)
-            robe_points = [
-                (center_x - 60, center_y - 40),
-                (center_x + 60, center_y - 40),
-                (center_x + 80, center_y + 120),
-                (center_x - 80, center_y + 120),
-            ]
-            draw.polygon(robe_points, fill=accent_color, outline=None)
-
-            # Scimitar
-            sword_handle_x = center_x - 80
-            sword_handle_y = center_y + 20
-            draw.line(
-                [
-                    (sword_handle_x, sword_handle_y),
-                    (sword_handle_x - 20, sword_handle_y - 80),
-                ],
-                fill=(192, 192, 192),
-                width=6,
-            )
-
-            # Curved blade
-            blade_points = [
-                (sword_handle_x - 20, sword_handle_y - 80),
-                (sword_handle_x - 40, sword_handle_y - 120),
-                (sword_handle_x - 25, sword_handle_y - 125),
-                (sword_handle_x - 15, sword_handle_y - 85),
-            ]
-            draw.polygon(blade_points, fill=(220, 220, 220), outline=None)
-
-        # Add facial features and details
-        # Eyes
-        eye_size = 8
-        draw.ellipse(
-            [
-                center_x - 15 - eye_size // 2,
-                center_y - 85 - eye_size // 2,
-                center_x - 15 + eye_size // 2,
-                center_y - 85 + eye_size // 2,
-            ],
-            fill=(0, 0, 0),
-            outline=None,
-        )
-        draw.ellipse(
-            [
-                center_x + 15 - eye_size // 2,
-                center_y - 85 - eye_size // 2,
-                center_x + 15 + eye_size // 2,
-                center_y - 85 + eye_size // 2,
-            ],
-            fill=(0, 0, 0),
-            outline=None,
-        )
-
-        return np.array(img)
+        return sprite
 
     def create_detailed_item_sprite(self, biome: str, item_type: str) -> np.ndarray:
-        """Generate detailed item sprites with proper game item properties"""
+        """Create detailed item sprite"""
+        sprite = np.zeros((self.height, self.width, 4), dtype=np.uint8)  # RGBA
         config = self.biome_configs[biome]
-        primary_color = random.choice(config["primary_colors"])
-        accent_color = random.choice(config["accent_colors"])
-
-        img = Image.new("RGBA", self.size, (255, 255, 255, 0))
-        draw = ImageDraw.Draw(img)
 
         center_x, center_y = self.width // 2, self.height // 2
 
         if item_type == "crystal_shard":
-            # Multi-faceted crystal with internal glow
-            crystal_points = []
-            num_facets = 8
-            base_radius = 60
+            # Draw crystal with facets
+            crystal_color = random.choice(config["primary_colors"])
+            self._draw_crystal(sprite, center_x, center_y, 40, 80, crystal_color)
 
-            for i in range(num_facets):
-                angle = (i / num_facets) * 2 * math.pi
-                radius_variation = base_radius + random.randint(-15, 15)
-                x = center_x + radius_variation * math.cos(angle)
-                y = center_y + radius_variation * math.sin(angle)
-                crystal_points.append((x, y))
+        elif item_type == "wooden_staff":
+            # Draw staff with details
+            wood_color = (139, 69, 19)
+            gem_color = random.choice(config["primary_colors"])
 
-            # Draw crystal body
-            draw.polygon(crystal_points, fill=primary_color, outline=accent_color)
+            # Staff body
+            self._draw_rectangle(
+                sprite, center_x - 5, center_y - 100, 10, 200, wood_color
+            )
 
-            # Internal facets for depth
-            for i in range(0, len(crystal_points), 2):
-                inner_points = [
-                    (center_x, center_y),
-                    crystal_points[i],
-                    crystal_points[(i + 1) % len(crystal_points)],
-                ]
-                facet_color = tuple(max(0, min(255, c + 30)) for c in accent_color)
-                draw.polygon(inner_points, fill=facet_color, outline=None)
+            # Top ornament
+            self._draw_circle(sprite, center_x, center_y - 100, 20, gem_color)
 
-            # Glow effect
-            glow_radius = base_radius + 20
-            for r in range(glow_radius, base_radius, -5):
-                alpha = int(50 * (glow_radius - r) / 20)
-                glow_color = accent_color + (alpha,)
-                draw.ellipse(
-                    [center_x - r, center_y - r, center_x + r, center_y + r],
-                    outline=glow_color,
-                    width=3,
+        elif item_type == "fire_crystal":
+            # Glowing fire crystal
+            core_color = (255, 69, 0)
+            glow_color = (255, 140, 0)
+
+            # Create glow effect
+            for radius in range(50, 20, -5):
+                alpha = (50 - radius) / 30
+                self._draw_circle_glow(
+                    sprite, center_x, center_y, radius, glow_color, alpha
                 )
 
-        elif item_type == "ancient_coin":
-            # Detailed coin with engravings
-            coin_radius = 45
+            # Draw crystal core
+            self._draw_crystal(sprite, center_x, center_y, 30, 60, core_color)
 
-            # Main coin body
-            draw.ellipse(
-                [
-                    center_x - coin_radius,
-                    center_y - coin_radius,
-                    center_x + coin_radius,
-                    center_y + coin_radius,
-                ],
-                fill=primary_color,
-                outline=accent_color,
-                width=3,
-            )
+        return sprite
 
-            # Inner circle pattern
-            inner_radius = coin_radius - 10
-            draw.ellipse(
-                [
-                    center_x - inner_radius,
-                    center_y - inner_radius,
-                    center_x + inner_radius,
-                    center_y + inner_radius,
-                ],
-                outline=accent_color,
-                width=2,
-            )
+    def _draw_circle(
+        self,
+        image: np.ndarray,
+        x: int,
+        y: int,
+        radius: int,
+        color: Tuple[int, int, int],
+    ):
+        """Draw a filled circle"""
+        for i in range(max(0, x - radius), min(self.width, x + radius + 1)):
+            for j in range(max(0, y - radius), min(self.height, y + radius + 1)):
+                if (i - x) ** 2 + (j - y) ** 2 <= radius**2:
+                    image[j, i] = (*color, 255)
 
-            # Ancient symbols (simplified runes)
-            symbol_radius = coin_radius - 20
-            for i in range(8):
-                angle = (i / 8) * 2 * math.pi
-                x1 = center_x + symbol_radius * math.cos(angle)
-                y1 = center_y + symbol_radius * math.sin(angle)
-                x2 = center_x + (symbol_radius - 8) * math.cos(angle)
-                y2 = center_y + (symbol_radius - 8) * math.sin(angle)
-                draw.line([(x1, y1), (x2, y2)], fill=accent_color, width=2)
+    def _draw_ellipse(
+        self,
+        image: np.ndarray,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        color: Tuple[int, int, int],
+    ):
+        """Draw a filled ellipse"""
+        for i in range(max(0, x - width), min(self.width, x + width + 1)):
+            for j in range(max(0, y - height), min(self.height, y + height + 1)):
+                if ((i - x) / width) ** 2 + ((j - y) / height) ** 2 <= 1:
+                    image[j, i] = (*color, 255)
 
-            # Central symbol
-            draw.ellipse(
-                [center_x - 8, center_y - 8, center_x + 8, center_y + 8],
-                fill=accent_color,
-                outline=None,
-            )
+    def _draw_rectangle(
+        self,
+        image: np.ndarray,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        color: Tuple[int, int, int],
+    ):
+        """Draw a filled rectangle"""
+        for i in range(max(0, x), min(self.width, x + width)):
+            for j in range(max(0, y), min(self.height, y + height)):
+                image[j, i] = (*color, 255)
 
-        elif item_type == "magic_staff":
-            # Detailed magical staff
-            # Staff shaft
-            staff_bottom_y = center_y + 150
-            staff_top_y = center_y - 150
-            draw.line(
-                [(center_x, staff_bottom_y), (center_x, staff_top_y)],
-                fill=(101, 67, 33),
-                width=12,
-            )
+    def _draw_triangle(
+        self,
+        image: np.ndarray,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        color: Tuple[int, int, int],
+    ):
+        """Draw a filled triangle"""
+        for i in range(max(0, x - width // 2), min(self.width, x + width // 2 + 1)):
+            for j in range(max(0, y), min(self.height, y + height)):
+                # Check if point is inside triangle
+                rel_x = abs(i - x)
+                max_width_at_y = width * (1 - (j - y) / height) / 2
+                if rel_x <= max_width_at_y:
+                    image[j, i] = (*color, 255)
 
-            # Staff head (ornate design)
-            head_points = [
-                (center_x - 25, staff_top_y),
-                (center_x - 15, staff_top_y - 30),
-                (center_x, staff_top_y - 40),
-                (center_x + 15, staff_top_y - 30),
-                (center_x + 25, staff_top_y),
-                (center_x, staff_top_y + 10),
-            ]
-            draw.polygon(head_points, fill=accent_color, outline=primary_color, width=2)
+    def _draw_crystal(
+        self,
+        image: np.ndarray,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        color: Tuple[int, int, int],
+    ):
+        """Draw a crystal shape with facets"""
+        # Draw main crystal body (hexagon-like)
+        facets = 6
+        for angle in range(0, 360, 360 // facets):
+            rad = math.radians(angle)
+            x1 = int(x + width * math.cos(rad))
+            y1 = int(y + height * 0.3 * math.sin(rad))
 
-            # Magical orb
-            orb_radius = 20
-            draw.ellipse(
-                [
-                    center_x - orb_radius,
-                    staff_top_y - 25 - orb_radius,
-                    center_x + orb_radius,
-                    staff_top_y - 25 + orb_radius,
-                ],
-                fill=primary_color,
-                outline=accent_color,
-                width=2,
-            )
+            # Draw triangular facet
+            self._draw_triangle_facet(image, x, y - height // 2, x1, y1, color)
+            self._draw_triangle_facet(image, x, y + height // 2, x1, y1, color)
 
-            # Magic energy effect
-            for i in range(6):
-                angle = (i / 6) * 2 * math.pi
-                energy_x = center_x + 35 * math.cos(angle)
-                energy_y = staff_top_y - 25 + 35 * math.sin(angle)
-                draw.ellipse(
-                    [energy_x - 5, energy_y - 5, energy_x + 5, energy_y + 5],
-                    fill=accent_color,
-                    outline=None,
-                )
+    def _draw_triangle_facet(
+        self,
+        image: np.ndarray,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        color: Tuple[int, int, int],
+    ):
+        """Draw a triangular facet with shading"""
+        # Simple triangle fill between three points
+        cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
 
-        return np.array(img)
+        # Shade based on position
+        shade_factor = 0.7 + 0.3 * (cx / self.width)
+        shaded_color = tuple(int(c * shade_factor) for c in color)
 
-    def create_detailed_texture(self, biome: str, pattern_type: str) -> np.ndarray:
-        """Create detailed biome-specific textures"""
-        if pattern_type == "bark_texture" and biome == "forest":
-            return self.generate_bark_texture(biome)
-        elif pattern_type == "sand_dunes" and biome == "desert":
-            return self.generate_sand_dunes(biome)
-        elif pattern_type == "ice_crystals" and biome == "snow":
-            return self.generate_ice_crystals(biome)
-        elif pattern_type == "lava_flow" and biome == "volcanic":
-            return self.generate_lava_flow(biome)
-        elif pattern_type == "coral_growth" and biome == "underwater":
-            return self.generate_coral_growth(biome)
-        elif pattern_type == "cloud_formation" and biome == "sky":
-            return self.generate_cloud_formation(biome)
-        else:
-            # Fallback to enhanced generic pattern
-            return self.create_enhanced_generic_pattern(biome, pattern_type)
+        # Fill triangle (simplified)
+        for i in range(min(x1, x2), max(x1, x2)):
+            for j in range(min(y1, y2), max(y1, y2)):
+                if 0 <= i < self.width and 0 <= j < self.height:
+                    image[j, i] = (*shaded_color, 255)
 
-    def create_enhanced_generic_pattern(
-        self, biome: str, pattern_type: str
-    ) -> np.ndarray:
-        """Enhanced generic patterns with improved detail"""
-        config = self.biome_configs[biome]
-        base_color = random.choice(config["primary_colors"])
+    def _draw_flame_body(
+        self,
+        image: np.ndarray,
+        x: int,
+        y: int,
+        body_color: Tuple[int, int, int],
+        flame_color: Tuple[int, int, int],
+    ):
+        """Draw a flaming body effect"""
+        # Draw main body
+        self._draw_ellipse(image, x, y, 40, 60, body_color)
 
-        # Multi-layer noise for complex patterns
-        primary_noise = self.generate_perlin_noise(
-            self.width, self.height, scale=0.05, octaves=4
-        )
-        detail_noise = self.generate_perlin_noise(
-            self.width, self.height, scale=0.15, octaves=3
-        )
-        fine_noise = self.generate_perlin_noise(
-            self.width, self.height, scale=0.3, octaves=2
-        )
+        # Add flame effects around body
+        flame_points = 20
+        for i in range(flame_points):
+            angle = (i / flame_points) * 2 * math.pi
+            flame_x = int(x + 45 * math.cos(angle))
+            flame_y = int(y + 65 * math.sin(angle))
 
-        texture = np.zeros((self.width, self.height, 3))
+            # Random flame height
+            flame_height = random.randint(10, 25)
+            self._draw_triangle(image, flame_x, flame_y, 8, flame_height, flame_color)
 
-        for i in range(self.width):
-            for j in range(self.height):
-                # Combine noise layers
-                combined_noise = (
-                    primary_noise[i, j] * 0.6
-                    + detail_noise[i, j] * 0.3
-                    + fine_noise[i, j] * 0.1
-                )
+    def _draw_circle_glow(
+        self,
+        image: np.ndarray,
+        x: int,
+        y: int,
+        radius: int,
+        color: Tuple[int, int, int],
+        alpha: float,
+    ):
+        """Draw a glowing circle with transparency"""
+        for i in range(max(0, x - radius), min(self.width, x + radius + 1)):
+            for j in range(max(0, y - radius), min(self.height, y + radius + 1)):
+                if (i - x) ** 2 + (j - y) ** 2 <= radius**2:
+                    # Blend with existing color
+                    existing = image[j, i]
+                    if existing[3] > 0:  # Has alpha
+                        # Blend colors
+                        for c in range(3):
+                            image[j, i, c] = int(
+                                existing[c] * (1 - alpha) + color[c] * alpha
+                            )
+                    else:
+                        image[j, i] = (*color, int(255 * alpha))
 
-                # Color variation based on noise
-                brightness = 0.5 + combined_noise * 0.8
+    def _apply_antialiasing(self, image: np.ndarray) -> np.ndarray:
+        """Apply simple antialiasing to sprite"""
+        # Convert to PIL for easier filtering
+        pil_image = Image.fromarray(image, mode="RGBA")
 
-                color = [
-                    int(base_color[0] * brightness),
-                    int(base_color[1] * brightness),
-                    int(base_color[2] * brightness),
-                ]
+        # Apply slight blur to edges
+        pil_image = pil_image.filter(ImageFilter.SMOOTH_MORE)
 
-                texture[i, j] = [max(0, min(255, c)) for c in color]
-
-        return texture
+        # Convert back to numpy
+        return np.array(pil_image)
 
 
 def generate_enhanced_assets(
