@@ -1,0 +1,2 @@
+huggingface-cli login
+HF_TOKEN = "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"
