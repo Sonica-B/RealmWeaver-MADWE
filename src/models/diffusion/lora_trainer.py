@@ -1,415 +1,577 @@
+#!/usr/bin/env python3
 """
-LoRA training for Stable Diffusion 
+LoRA Training for MADWE Project
+Trains biome-specific LoRA adapters for game asset generation
 """
-
-import yaml
+import os
+import sys
+import json
 import torch
 import torch.nn.functional as F
 from pathlib import Path
-from typing import Dict, Any
-from accelerate import Accelerator
-from accelerate.utils import ProjectConfiguration, set_seed
+from datetime import datetime
+from tqdm import tqdm
+from typing import Dict, Optional, Tuple
+import numpy as np
+
 from diffusers import (
-    StableDiffusionPipeline,
-    DDPMScheduler,
+    StableDiffusionXLPipeline,
     AutoencoderKL,
     UNet2DConditionModel,
+    DDPMScheduler,
 )
-from transformers import CLIPTokenizer, CLIPTextModel
+from diffusers.optimization import get_scheduler
 from peft import LoraConfig, get_peft_model, TaskType
-from torch.utils.data import DataLoader
-from tqdm.auto import tqdm
-import wandb
+from transformers import CLIPTextModel, CLIPTextModelWithProjection
+from accelerate import Accelerator
+from accelerate.utils import ProjectConfiguration
 
-from ...utils.dataloader import DynamicConditionalDataset
+# Add project root to path
+sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+from src.utils.dataloader import DynamicGameAssetDataset
+from src.models.diffusion.optimizers import get_lora_optimizer
 
 
 class LoRATrainer:
-    """LoRA trainer for game assets with Python 3.11 enhancements"""
+    """LoRA trainer for biome-specific style adaptation"""
 
-    def __init__(self, config_path: str | Path):
-        with open(config_path, "r") as f:
-            self.config: Dict[str, Any] = yaml.safe_load(f)
-
+    def __init__(self, config: Dict):
+        self.config = config
         self.accelerator = self._setup_accelerator()
-        self.models: Dict[str, Any] = {}
-        set_seed(self.config.get("seed", 42))
+        self.device = self.accelerator.device
+
+        # Setup paths
+        self.output_dir = Path(config["output_dir"])
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize models
+        self._setup_models()
+        self._setup_lora()
+        self._setup_training()
 
     def _setup_accelerator(self) -> Accelerator:
+        """Setup accelerator with mixed precision"""
         project_config = ProjectConfiguration(
             project_dir=self.config["output_dir"],
-            logging_dir=self.config["logging_dir"],
-            automatic_checkpoint_naming=True,
-            total_limit=2,  # Keep only 2 checkpoints
+            logging_dir=os.path.join(self.config["output_dir"], "logs"),
         )
 
         return Accelerator(
-            gradient_accumulation_steps=self.config["gradient_accumulation_steps"],
-            mixed_precision=self.config["mixed_precision"],
-            log_with=self.config.get("log_with", "tensorboard"),
+            mixed_precision=(
+                "fp16" if self.config.get("mixed_precision", True) else "no"
+            ),
+            gradient_accumulation_steps=self.config.get(
+                "gradient_accumulation_steps", 4
+            ),
             project_config=project_config,
+            log_with="tensorboard",
         )
 
-    def setup_models(self) -> None:
-        """Load and configure models with latest APIs"""
-        model_id = self.config["pretrained_model_name"]
-
-        # Load scheduler
-        self.models["noise_scheduler"] = DDPMScheduler.from_pretrained(
-            model_id, subfolder="scheduler"
+    def _setup_models(self):
+        """Load base SDXL models"""
+        model_id = self.config.get(
+            "model_id", "stabilityai/stable-diffusion-xl-base-1.0"
         )
 
-        # Load tokenizer
-        self.models["tokenizer"] = CLIPTokenizer.from_pretrained(
+        # Load models
+        self.vae = AutoencoderKL.from_pretrained(
+            model_id,
+            subfolder="vae",
+            torch_dtype=(
+                torch.float16
+                if self.config.get("mixed_precision", True)
+                else torch.float32
+            ),
+        )
+
+        self.unet = UNet2DConditionModel.from_pretrained(
+            model_id,
+            subfolder="unet",
+            torch_dtype=(
+                torch.float16
+                if self.config.get("mixed_precision", True)
+                else torch.float32
+            ),
+        )
+
+        self.text_encoder_1 = CLIPTextModel.from_pretrained(
+            model_id,
+            subfolder="text_encoder",
+            torch_dtype=(
+                torch.float16
+                if self.config.get("mixed_precision", True)
+                else torch.float32
+            ),
+        )
+
+        self.text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(
+            model_id,
+            subfolder="text_encoder_2",
+            torch_dtype=(
+                torch.float16
+                if self.config.get("mixed_precision", True)
+                else torch.float32
+            ),
+        )
+
+        # Load tokenizers
+        from transformers import CLIPTokenizer
+
+        self.tokenizer_1 = CLIPTokenizer.from_pretrained(
             model_id, subfolder="tokenizer"
         )
-
-        # Load models with specific components
-        self.models["text_encoder"] = CLIPTextModel.from_pretrained(
-            model_id, subfolder="text_encoder"
+        self.tokenizer_2 = CLIPTokenizer.from_pretrained(
+            model_id, subfolder="tokenizer_2"
         )
 
-        self.models["vae"] = AutoencoderKL.from_pretrained(model_id, subfolder="vae")
+        # Freeze VAE and text encoders
+        self.vae.requires_grad_(False)
+        self.text_encoder_1.requires_grad_(False)
+        self.text_encoder_2.requires_grad_(False)
 
-        self.models["unet"] = UNet2DConditionModel.from_pretrained(
-            model_id, subfolder="unet"
-        )
+        # Move to device
+        self.vae.to(self.device)
+        self.text_encoder_1.to(self.device)
+        self.text_encoder_2.to(self.device)
 
-        # Move to appropriate dtype
-        weight_dtype = torch.float32
-        if self.accelerator.mixed_precision == "fp16":
-            weight_dtype = torch.float16
-        elif self.accelerator.mixed_precision == "bf16":
-            weight_dtype = torch.bfloat16
-
-        # Freeze non-LoRA models and cast to appropriate dtype
-        self.models["vae"].requires_grad_(False)
-        self.models["text_encoder"].requires_grad_(False)
-        self.models["unet"].requires_grad_(False)
-
-        self.models["vae"].to(self.accelerator.device, dtype=weight_dtype)
-        self.models["text_encoder"].to(self.accelerator.device, dtype=weight_dtype)
-
-        # Configure LoRA
+    def _setup_lora(self):
+        """Configure LoRA for UNet"""
         lora_config = LoraConfig(
-            r=self.config["lora_rank"],
-            lora_alpha=self.config["lora_alpha"],
-            target_modules=self.config["target_modules"],
-            lora_dropout=self.config["lora_dropout"],
-            bias="none",
-            task_type=TaskType.DIFFUSION_IMAGE_GENERATION,
+            r=self.config.get("lora_rank", 8),
+            lora_alpha=self.config.get("lora_alpha", 8),
+            target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+            lora_dropout=self.config.get("lora_dropout", 0.1),
         )
 
         # Add LoRA to UNet
-        self.models["unet"] = get_peft_model(self.models["unet"], lora_config)
-        self.models["unet"].print_trainable_parameters()
+        self.unet = get_peft_model(self.unet, lora_config)
+        self.unet.to(self.device)
 
-        # Enable gradient checkpointing if specified
-        if self.config.get("gradient_checkpointing", False):
-            self.models["unet"].enable_gradient_checkpointing()
-            self.models["text_encoder"].gradient_checkpointing_enable()
+        # Print trainable parameters
+        self.unet.print_trainable_parameters()
 
-    def create_dataloader(
-        self, condition: Dict[str, str], asset_type: str = "textures"
-    ) -> DataLoader:
-        """Create dataloader for specific conditions"""
-        dataset = DynamicConditionalDataset(
-            data_dir=Path(self.config["data_dir"]),
-            asset_type=asset_type,
-            condition=condition,
-            tokenizer=self.models["tokenizer"],
-            size=self.config["resolution"],
+    def _setup_training(self):
+        """Setup optimizer, scheduler, and dataloaders"""
+        # Optimizer
+        self.optimizer = get_lora_optimizer(
+            self.unet,
+            learning_rate=self.config.get("learning_rate", 1e-4),
+            weight_decay=self.config.get("weight_decay", 1e-2),
         )
 
-        return DataLoader(
-            dataset,
-            batch_size=self.config["train_batch_size"],
-            shuffle=True,
-            num_workers=0,  # Windows compatibility
-            pin_memory=torch.cuda.is_available(),
+        # Noise scheduler
+        self.noise_scheduler = DDPMScheduler.from_pretrained(
+            self.config.get("model_id", "stabilityai/stable-diffusion-xl-base-1.0"),
+            subfolder="scheduler",
         )
 
-    def train_step(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """Single training step with mixed precision"""
-        with self.accelerator.autocast():
-            # Encode images to latents
-            latents = (
-                self.models["vae"]
-                .encode(batch["pixel_values"].to(self.models["vae"].dtype))
-                .latent_dist.sample()
-            )
-            latents = latents * self.models["vae"].config.scaling_factor
-
-            # Sample noise
-            noise = torch.randn_like(latents)
-            bsz = latents.shape[0]
-
-            # Sample timesteps
-            timesteps = torch.randint(
-                0,
-                self.models["noise_scheduler"].config.num_train_timesteps,
-                (bsz,),
-                device=latents.device,
-            ).long()
-
-            # Add noise
-            noisy_latents = self.models["noise_scheduler"].add_noise(
-                latents, noise, timesteps
-            )
-
-            # Get text embeddings
-            encoder_hidden_states = self.models["text_encoder"](
-                batch["input_ids"], return_dict=False
-            )[0]
-
-            # Predict noise
-            model_pred = self.models["unet"](
-                noisy_latents, timesteps, encoder_hidden_states, return_dict=False
-            )[0]
-
-            # Calculate loss
-            if self.models["noise_scheduler"].config.prediction_type == "epsilon":
-                target = noise
-            elif (
-                self.models["noise_scheduler"].config.prediction_type == "v_prediction"
-            ):
-                target = self.models["noise_scheduler"].get_velocity(
-                    latents, noise, timesteps
-                )
-            else:
-                raise ValueError(
-                    f"Unknown prediction type {self.models['noise_scheduler'].config.prediction_type}"
-                )
-
-            loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
-        return loss
-
-    def train(
-        self,
-        condition: Dict[str, str],
-        asset_type: str = "textures",
-        num_epochs: int | None = None,
-    ) -> None:
-        """Train LoRA for specific conditions with modern training loop"""
-        if num_epochs is None:
-            num_epochs = self.config.get("num_train_epochs", 10)
-
-        # Setup
-        self.setup_models()
-        dataloader = self.create_dataloader(condition, asset_type)
-
-        # Optimizer with optional 8-bit
-        optimizer_class = torch.optim.AdamW
-        if self.config.get("use_8bit_adam", False):
-            try:
-                import bitsandbytes as bnb
-
-                optimizer_class = bnb.optim.AdamW8bit
-            except ImportError:
-                print("bitsandbytes not available, using standard AdamW")
-
-        optimizer = optimizer_class(
-            self.models["unet"].parameters(),
-            lr=self.config["learning_rate"],
-            betas=(self.config["adam_beta1"], self.config["adam_beta2"]),
-            weight_decay=self.config["adam_weight_decay"],
-            eps=self.config["adam_epsilon"],
-        )
+        # Dataloaders
+        self._setup_dataloaders()
 
         # Learning rate scheduler
-        from transformers import get_scheduler
-
-        lr_scheduler = get_scheduler(
-            "cosine",
-            optimizer=optimizer,
-            num_warmup_steps=self.config.get("lr_warmup_steps", 500),
-            num_training_steps=len(dataloader) * num_epochs,
+        self.lr_scheduler = get_scheduler(
+            self.config.get("lr_scheduler", "cosine"),
+            optimizer=self.optimizer,
+            num_warmup_steps=self.config.get("warmup_steps", 500),
+            num_training_steps=self.config.get("num_train_steps", 10000),
         )
 
-        # Prepare with accelerator
-        self.models["unet"], optimizer, dataloader, lr_scheduler = (
+        # Prepare for distributed training
+        self.unet, self.optimizer, self.train_dataloader, self.lr_scheduler = (
             self.accelerator.prepare(
-                self.models["unet"], optimizer, dataloader, lr_scheduler
+                self.unet, self.optimizer, self.train_dataloader, self.lr_scheduler
             )
         )
 
-        # Initialize trackers
-        if self.accelerator.is_main_process:
-            condition_str = "_".join(f"{k}_{v}" for k, v in condition.items())
-            self.accelerator.init_trackers(
-                project_name=f"madwe-lora-{condition_str}", config=self.config
-            )
+    def _setup_dataloaders(self):
+        """Create training and validation dataloaders"""
+        # Training dataset
+        train_dataset = DynamicGameAssetDataset(
+            data_dir=Path(self.config["data_dir"]),
+            split="train",
+            filters={"biome": self.config.get("biome", None)},
+            transform=self._get_transforms(),
+        )
 
-        # Training loop
+        self.train_dataloader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=self.config.get("batch_size", 1),
+            shuffle=True,
+            num_workers=self.config.get("num_workers", 4),
+            pin_memory=True,
+        )
+
+        # Validation dataset
+        val_dataset = DynamicGameAssetDataset(
+            data_dir=Path(self.config["data_dir"]),
+            split="val",
+            filters={"biome": self.config.get("biome", None)},
+            transform=self._get_transforms(),
+        )
+
+        self.val_dataloader = torch.utils.data.DataLoader(
+            val_dataset, batch_size=1, shuffle=False, num_workers=2
+        )
+
+    def _get_transforms(self):
+        """Get image transforms"""
+        from torchvision import transforms
+
+        return transforms.Compose(
+            [
+                transforms.Resize(
+                    (
+                        self.config.get("resolution", 512),
+                        self.config.get("resolution", 512),
+                    )
+                ),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ColorJitter(brightness=0.1, contrast=0.1),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+            ]
+        )
+
+    def _encode_prompt(self, prompt: str) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Encode text prompt for SDXL"""
+        # Tokenize
+        tokens_1 = self.tokenizer_1(
+            prompt,
+            padding="max_length",
+            max_length=77,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids.to(self.device)
+
+        tokens_2 = self.tokenizer_2(
+            prompt,
+            padding="max_length",
+            max_length=77,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids.to(self.device)
+
+        # Encode
+        with torch.no_grad():
+            encoder_output_1 = self.text_encoder_1(tokens_1, output_hidden_states=True)
+            encoder_output_2 = self.text_encoder_2(tokens_2, output_hidden_states=True)
+
+        # Get embeddings
+        text_embeds = torch.cat(
+            [encoder_output_1.hidden_states[-2], encoder_output_2.hidden_states[-2]],
+            dim=-1,
+        )
+
+        pooled_embeds = encoder_output_2.text_embeds
+
+        return text_embeds, pooled_embeds
+
+    def train(self):
+        """Main training loop"""
         global_step = 0
 
-        for epoch in range(num_epochs):
-            self.models["unet"].train()
+        # Initialize tracking
+        self.accelerator.init_trackers(project_name="madwe-lora", config=self.config)
+
+        for epoch in range(self.config.get("num_epochs", 10)):
+            self.unet.train()
             progress_bar = tqdm(
-                dataloader,
-                desc=f"Epoch {epoch+1}/{num_epochs}",
-                disable=not self.accelerator.is_local_main_process,
+                self.train_dataloader,
+                desc=f"Epoch {epoch+1}/{self.config.get('num_epochs', 10)}",
             )
 
-            for step, batch in enumerate(progress_bar):
-                with self.accelerator.accumulate(self.models["unet"]):
-                    loss = self.train_step(batch)
+            for batch in progress_bar:
+                with self.accelerator.accumulate(self.unet):
+                    # Get images and prompts
+                    images = batch["image"].to(self.device)
+                    prompts = batch.get(
+                        "prompt",
+                        [
+                            f"{batch['metadata'][i]['biome']} game asset"
+                            for i in range(len(batch["image"]))
+                        ],
+                    )
 
+                    # Encode images to latents
+                    with torch.no_grad():
+                        latents = self.vae.encode(images).latent_dist.sample()
+                        latents = latents * self.vae.config.scaling_factor
+
+                    # Sample noise
+                    noise = torch.randn_like(latents)
+                    timesteps = torch.randint(
+                        0,
+                        self.noise_scheduler.config.num_train_timesteps,
+                        (latents.shape[0],),
+                        device=self.device,
+                    ).long()
+
+                    # Add noise to latents
+                    noisy_latents = self.noise_scheduler.add_noise(
+                        latents, noise, timesteps
+                    )
+
+                    # Encode prompts
+                    text_embeds_list = []
+                    pooled_embeds_list = []
+                    for prompt in prompts:
+                        text_embeds, pooled_embeds = self._encode_prompt(prompt)
+                        text_embeds_list.append(text_embeds)
+                        pooled_embeds_list.append(pooled_embeds)
+
+                    text_embeds = torch.cat(text_embeds_list, dim=0)
+                    pooled_embeds = torch.cat(pooled_embeds_list, dim=0)
+
+                    # Create time embeddings
+                    time_ids = torch.tensor(
+                        [
+                            [
+                                self.config.get("resolution", 512),
+                                self.config.get("resolution", 512),
+                                0,
+                                0,
+                                self.config.get("resolution", 512),
+                                self.config.get("resolution", 512),
+                            ]
+                        ],
+                        device=self.device,
+                    ).repeat(latents.shape[0], 1)
+
+                    # Predict noise
+                    model_pred = self.unet(
+                        noisy_latents,
+                        timesteps,
+                        encoder_hidden_states=text_embeds,
+                        added_cond_kwargs={
+                            "text_embeds": pooled_embeds,
+                            "time_ids": time_ids,
+                        },
+                    ).sample
+
+                    # Calculate loss
+                    loss = F.mse_loss(model_pred, noise, reduction="mean")
+
+                    # Add style consistency loss if enabled
+                    if self.config.get("use_style_loss", True):
+                        style_loss = self._compute_style_loss(model_pred, noise)
+                        loss = (
+                            loss
+                            + self.config.get("style_loss_weight", 0.1) * style_loss
+                        )
+
+                    # Backward pass
                     self.accelerator.backward(loss)
-                    if self.accelerator.sync_gradients:
+
+                    # Gradient clipping
+                    if self.config.get("max_grad_norm", 1.0) > 0:
                         self.accelerator.clip_grad_norm_(
-                            self.models["unet"].parameters(),
+                            self.unet.parameters(),
                             self.config.get("max_grad_norm", 1.0),
                         )
 
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad()
+                    # Optimizer step
+                    self.optimizer.step()
+                    self.lr_scheduler.step()
+                    self.optimizer.zero_grad()
 
-                if self.accelerator.sync_gradients:
-                    global_step += 1
-
-                    if self.accelerator.is_main_process:
-                        progress_bar.set_postfix(
+                    # Logging
+                    if global_step % self.config.get("log_every", 50) == 0:
+                        self.accelerator.log(
                             {
-                                "loss": loss.detach().item(),
-                                "lr": lr_scheduler.get_last_lr()[0],
+                                "loss": loss.item(),
+                                "lr": self.lr_scheduler.get_last_lr()[0],
+                                "epoch": epoch,
+                                "step": global_step,
                             }
                         )
 
-                        # Log metrics
-                        self.accelerator.log(
-                            {
-                                "train_loss": loss.detach().item(),
-                                "learning_rate": lr_scheduler.get_last_lr()[0],
-                                "epoch": epoch,
-                                "global_step": global_step,
-                            },
-                            step=global_step,
-                        )
+                    # Update progress
+                    progress_bar.set_postfix(loss=loss.item())
+                    global_step += 1
 
-                        # Save checkpoint
-                        if global_step % self.config["save_steps"] == 0:
-                            self.save_checkpoint(condition, asset_type, global_step)
+                    # Save checkpoint
+                    if global_step % self.config.get("save_every", 500) == 0:
+                        self._save_checkpoint(global_step)
 
-                        # Validation
-                        if global_step % self.config.get("validation_steps", 100) == 0:
-                            self.validate(condition, asset_type, global_step)
+                    # Validation
+                    if global_step % self.config.get("val_every", 1000) == 0:
+                        self._validate()
 
-        # Save final model
-        self.accelerator.wait_for_everyone()
-        self.save_checkpoint(condition, asset_type, global_step, final=True)
+        # Final save
+        self._save_checkpoint(global_step, final=True)
         self.accelerator.end_training()
 
-    def save_checkpoint(
-        self, condition: Dict[str, str], asset_type: str, step: int, final: bool = False
-    ) -> None:
-        """Save LoRA checkpoint with metadata"""
-        self.accelerator.wait_for_everyone()
+    def _compute_style_loss(
+        self, pred: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
+        """Compute style consistency loss using Gram matrices"""
 
-        if self.accelerator.is_main_process:
-            condition_str = "_".join(f"{k}_{v}" for k, v in condition.items())
-            save_path = (
-                Path(self.config["output_dir"]) / f"lora_{asset_type}_{condition_str}"
-            )
-            if final:
-                save_path = save_path / "final"
-            else:
-                save_path = save_path / f"checkpoint-{step}"
+        def gram_matrix(x):
+            b, c, h, w = x.size()
+            features = x.view(b, c, h * w)
+            gram = torch.bmm(features, features.transpose(1, 2))
+            return gram / (c * h * w)
 
-            # Save LoRA weights
-            unwrapped_model = self.accelerator.unwrap_model(self.models["unet"])
-            unwrapped_model.save_pretrained(save_path)
+        pred_gram = gram_matrix(pred)
+        target_gram = gram_matrix(target)
 
-            # Save training state
-            self.accelerator.save_state(save_path / "training_state")
+        return F.mse_loss(pred_gram, target_gram)
 
-            print(f"Saved checkpoint to {save_path}")
-
-    def validate(self, condition: Dict[str, str], asset_type: str, step: int) -> None:
-        """Generate validation images"""
-        self.models["unet"].eval()
-
-        # Create pipeline for inference
-        pipeline = StableDiffusionPipeline(
-            vae=self.models["vae"],
-            text_encoder=self.models["text_encoder"],
-            tokenizer=self.models["tokenizer"],
-            unet=self.accelerator.unwrap_model(self.models["unet"]),
-            scheduler=self.models["noise_scheduler"],
-            safety_checker=None,
-            feature_extractor=None,
-            requires_safety_checker=False,
+    def _save_checkpoint(self, step: int, final: bool = False):
+        """Save LoRA checkpoint"""
+        save_path = (
+            self.output_dir / f"checkpoint-{step}"
+            if not final
+            else self.output_dir / "final"
         )
-        pipeline.set_progress_bar_config(disable=True)
+        save_path.mkdir(exist_ok=True)
 
-        # Generate validation images
-        condition_str = "_".join(f"{k} {v}" for k, v in condition.items())
-        validation_prompts = [
-            f"{asset_type} asset, {condition_str}, detailed, high quality",
-            f"{asset_type} for game, {condition_str}, game ready, seamless",
-            f"{asset_type} pattern, {condition_str}, stylized game art",
-        ]
+        # Save LoRA weights
+        self.accelerator.unwrap_model(self.unet).save_pretrained(save_path)
 
-        images = []
+        # Save optimizer state
+        torch.save(
+            {
+                "optimizer": self.optimizer.state_dict(),
+                "lr_scheduler": self.lr_scheduler.state_dict(),
+                "step": step,
+                "config": self.config,
+            },
+            save_path / "training_state.pt",
+        )
+
+        print(f"Saved checkpoint to {save_path}")
+
+    def _validate(self):
+        """Run validation"""
+        self.unet.eval()
+        val_losses = []
+
         with torch.no_grad():
-            for prompt in validation_prompts:
-                image = pipeline(
-                    prompt,
-                    num_inference_steps=30,
-                    guidance_scale=7.5,
-                    generator=torch.Generator(
-                        device=self.accelerator.device
-                    ).manual_seed(42),
-                ).images[0]
-                images.append(image)
+            for batch in tqdm(self.val_dataloader, desc="Validation"):
+                images = batch["image"].to(self.device)
+                prompts = batch.get(
+                    "prompt",
+                    [
+                        f"{batch['metadata'][i]['biome']} game asset"
+                        for i in range(len(batch["image"]))
+                    ],
+                )
 
-        # Log images
-        if self.accelerator.is_main_process:
-            self.accelerator.log(
-                {
-                    f"validation/{asset_type}_{condition_str}": [
-                        wandb.Image(img, caption=prompt)
-                        for img, prompt in zip(images, validation_prompts)
-                    ]
-                },
-                step=step,
-            )
+                # Same forward pass as training
+                latents = (
+                    self.vae.encode(images).latent_dist.sample()
+                    * self.vae.config.scaling_factor
+                )
+                noise = torch.randn_like(latents)
+                timesteps = torch.randint(
+                    0, 1000, (latents.shape[0],), device=self.device
+                ).long()
+                noisy_latents = self.noise_scheduler.add_noise(
+                    latents, noise, timesteps
+                )
 
-        self.models["unet"].train()
+                text_embeds_list = []
+                pooled_embeds_list = []
+                for prompt in prompts:
+                    text_embeds, pooled_embeds = self._encode_prompt(prompt)
+                    text_embeds_list.append(text_embeds)
+                    pooled_embeds_list.append(pooled_embeds)
+
+                text_embeds = torch.cat(text_embeds_list, dim=0)
+                pooled_embeds = torch.cat(pooled_embeds_list, dim=0)
+
+                time_ids = torch.tensor(
+                    [[512, 512, 0, 0, 512, 512]], device=self.device
+                ).repeat(latents.shape[0], 1)
+
+                model_pred = self.unet(
+                    noisy_latents,
+                    timesteps,
+                    encoder_hidden_states=text_embeds,
+                    added_cond_kwargs={
+                        "text_embeds": pooled_embeds,
+                        "time_ids": time_ids,
+                    },
+                ).sample
+
+                loss = F.mse_loss(model_pred, noise)
+                val_losses.append(loss.item())
+
+        avg_val_loss = np.mean(val_losses)
+        self.accelerator.log({"val_loss": avg_val_loss})
+        print(f"Validation loss: {avg_val_loss:.4f}")
+
+        self.unet.train()
 
 
 def main():
-    """Main training function"""
+    """Main training entry point"""
     import argparse
 
     parser = argparse.ArgumentParser(description="Train LoRA for MADWE")
+    parser.add_argument("--biome", type=str, required=True, help="Biome to train on")
     parser.add_argument(
-        "--config", type=str, default="configs/training/lora_config.yaml"
+        "--data-dir", type=str, default="data/processed", help="Data directory"
     )
     parser.add_argument(
-        "--asset-type",
-        type=str,
-        default="textures",
-        choices=["textures", "sprites", "gameplay"],
+        "--output-dir", type=str, default="data/models/lora", help="Output directory"
+    )
+    parser.add_argument("--batch-size", type=int, default=1, help="Batch size")
+    parser.add_argument(
+        "--learning-rate", type=float, default=1e-4, help="Learning rate"
+    )
+    parser.add_argument("--num-epochs", type=int, default=10, help="Number of epochs")
+    parser.add_argument("--lora-rank", type=int, default=8, help="LoRA rank")
+    parser.add_argument(
+        "--resolution", type=int, default=512, help="Training resolution"
     )
     parser.add_argument(
-        "--condition",
-        type=str,
-        required=True,
-        help="Condition string in format key1_value1,key2_value2 (e.g., genre_platformer,style_pixel)",
+        "--mixed-precision", action="store_true", help="Use mixed precision"
     )
+    parser.add_argument(
+        "--gradient-accumulation-steps",
+        type=int,
+        default=4,
+        help="Gradient accumulation",
+    )
+
     args = parser.parse_args()
 
-    # Parse condition string
-    condition = {}
-    for pair in args.condition.split(","):
-        key, value = pair.split("_", 1)
-        condition[key] = value
+    # Create config
+    config = {
+        "biome": args.biome,
+        "data_dir": args.data_dir,
+        "output_dir": os.path.join(args.output_dir, f"lora_{args.biome}"),
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "num_epochs": args.num_epochs,
+        "lora_rank": args.lora_rank,
+        "resolution": args.resolution,
+        "mixed_precision": args.mixed_precision,
+        "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "num_train_steps": 10000,
+        "warmup_steps": 500,
+        "save_every": 500,
+        "val_every": 1000,
+        "log_every": 50,
+        "use_style_loss": True,
+        "style_loss_weight": 0.1,
+        "max_grad_norm": 1.0,
+        "weight_decay": 0.01,
+        "lora_alpha": args.lora_rank,
+        "lora_dropout": 0.1,
+        "num_workers": 4,
+    }
 
-    trainer = LoRATrainer(args.config)
-    trainer.train(condition, args.asset_type)
+    print(f"Training LoRA for biome: {args.biome}")
+    print(f"Output directory: {config['output_dir']}")
+
+    # Train
+    trainer = LoRATrainer(config)
+    trainer.train()
+
+    print("Training complete!")
 
 
 if __name__ == "__main__":
