@@ -1,30 +1,33 @@
 MADWE Data Quality Report
 ==================================================
 
-Total files scanned: 1200
-Valid files: 63
-Rejected files: 816
+Total files scanned: 284
+Valid files: 284
+Rejected files: 0
 
 Rejection Reasons:
-  - insufficient_detail: 542
-  - duplicate: 321
-  - low_contrast: 274
 
 Biome Distribution:
-  - desert: 5
-  - forest: 27
-  - snow: 13
-  - volcanic: 18
+  - casual_bright: 30
+  - cyberpunk_city: 30
+  - fantasy_forest: 30
+  - fantasy_items: 14
+  - horror_mansion: 30
+  - pixel_characters: 30
+  - post_apocalypse: 30
+  - retro_arcade: 30
+  - steampunk_industrial: 30
+  - underwater_depths: 30
 
 Asset Type Distribution:
-  - sprites: 16
-  - textures: 47
+  - sprites: 44
+  - textures: 240
 
 Resolution Distribution:
-  - 512x512: 63
+  - 512x512: 284
 
 File Size Statistics:
-  - Mean: 163.1 KB
-  - Median: 191.0 KB
-  - Min: 1.2 KB
-  - Max: 329.4 KB
+  - Mean: 439.0 KB
+  - Median: 430.3 KB
+  - Min: 228.8 KB
+  - Max: 682.1 KB

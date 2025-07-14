@@ -1,229 +1,214 @@
 """
-Diffusion model inference utilities 
+Inference utilities for MADWE diffusion models with LoRA
 """
 
 import torch
-import numpy as np
 from pathlib import Path
-from typing import List, Dict, Any
-from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler, LCMScheduler
-from peft import PeftModel
-import time
-import warnings
+from typing import Optional, List, Dict, Union
+import numpy as np
+from PIL import Image
+
+from diffusers import StableDiffusionXLPipeline, DPMSolverMultistepScheduler
+from safetensors import safe_open
 
 
-class DiffusionInference:
-    """Optimized inference for diffusion models with LoRA"""
+class LoRAInference:
+    """Inference with trained LoRA adapters"""
 
     def __init__(
         self,
-        base_model: str = "runwayml/stable-diffusion-v1-5",
-        device: str | None = None,
+        base_model_id: str = "stabilityai/stable-diffusion-xl-base-1.0",
+        device: str = None,
         dtype: torch.dtype = torch.float16,
-        enable_xformers: bool = True,
     ):
-
-        self.base_model = base_model
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.dtype = dtype
-        self.enable_xformers = enable_xformers
-        self.pipe: StableDiffusionPipeline | None = None
-        self.lora_models: Dict[str, Path] = {}
 
-    def load_base_model(self) -> None:
-        """Load base Stable Diffusion model with latest API"""
-        self.pipe = StableDiffusionPipeline.from_pretrained(
-            self.base_model,
+        # Load base pipeline
+        self.pipe = StableDiffusionXLPipeline.from_pretrained(
+            base_model_id,
             torch_dtype=self.dtype,
-            safety_checker=None,
-            requires_safety_checker=False,
             use_safetensors=True,
-        )
+            variant="fp16" if self.dtype == torch.float16 else None,
+        ).to(self.device)
 
-        # Use DPM solver for faster inference
+        # Optimize scheduler
         self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(
             self.pipe.scheduler.config
         )
 
-        self.pipe = self.pipe.to(self.device)
-
-        # Enable memory optimizations
+        # Enable optimizations
         if self.device == "cuda":
-            self.pipe.enable_attention_slicing()
-            if self.enable_xformers:
-                try:
-                    self.pipe.enable_xformers_memory_efficient_attention()
-                except Exception as e:
-                    warnings.warn(f"xformers not available: {e}")
-
-            # Enable VAE slicing for lower memory usage
+            self.pipe.enable_model_cpu_offload()
             self.pipe.enable_vae_slicing()
+            self.pipe.enable_vae_tiling()
 
-    def load_lora(self, lora_path: Path | str, adapter_name: str) -> None:
-        """Load LoRA adapter with PEFT"""
-        if self.pipe is None:
-            self.load_base_model()
+        self.current_lora = None
 
+    def load_lora(self, lora_path: Union[str, Path], scale: float = 1.0):
+        """Load LoRA adapter"""
         lora_path = Path(lora_path)
 
-        # Load LoRA weights into UNet
-        self.pipe.unet = PeftModel.from_pretrained(
-            self.pipe.unet, str(lora_path), adapter_name=adapter_name
-        )
+        if not lora_path.exists():
+            raise ValueError(f"LoRA path not found: {lora_path}")
 
-        self.lora_models[adapter_name] = lora_path
-        print(f"Loaded LoRA adapter: {adapter_name}")
+        # Unload previous LoRA if exists
+        if self.current_lora:
+            self.pipe.unload_lora_weights()
 
-    def set_active_lora(self, adapter_name: str) -> None:
-        """Set active LoRA adapter"""
-        if adapter_name not in self.lora_models:
-            raise ValueError(f"LoRA adapter '{adapter_name}' not loaded")
+        # Load new LoRA
+        self.pipe.load_lora_weights(lora_path)
+        self.pipe.fuse_lora(lora_scale=scale)
 
-        self.pipe.unet.set_adapter(adapter_name)
+        self.current_lora = lora_path
+        print(f"Loaded LoRA: {lora_path}")
 
     def generate(
         self,
         prompt: str,
         negative_prompt: str = "",
-        num_inference_steps: int = 20,
+        num_images: int = 1,
+        width: int = 1024,
+        height: int = 1024,
+        num_inference_steps: int = 30,
         guidance_scale: float = 7.5,
-        width: int = 512,
-        height: int = 512,
-        seed: int | None = None,
+        seed: Optional[int] = None,
         **kwargs,
-    ) -> Dict[str, Any]:
-        """Generate image with timing info"""
+    ) -> List[Image.Image]:
+        """Generate images with current LoRA"""
 
-        if self.pipe is None:
-            self.load_base_model()
-
+        # Set seed for reproducibility
         generator = None
         if seed is not None:
-            generator = torch.Generator(device=self.device).manual_seed(seed)
+            generator = torch.Generator(self.device).manual_seed(seed)
 
-        start_time = time.perf_counter()
-
-        result = self.pipe(
+        # Generate
+        images = self.pipe(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
+            num_images_per_prompt=num_images,
             width=width,
             height=height,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
             generator=generator,
             **kwargs,
-        )
+        ).images
 
-        generation_time = time.perf_counter() - start_time
-
-        return {
-            "image": result.images[0],
-            "time": generation_time,
-            "fps": 1.0 / generation_time,
-            "settings": {
-                "steps": num_inference_steps,
-                "guidance": guidance_scale,
-                "size": (width, height),
-                "seed": seed,
-            },
-        }
+        return images
 
     def generate_batch(
-        self, prompts: List[str], batch_size: int = 1, **kwargs
-    ) -> List[Dict[str, Any]]:
-        """Generate multiple images with batching"""
-        results = []
+        self, prompts: List[str], negative_prompts: Optional[List[str]] = None, **kwargs
+    ) -> List[Image.Image]:
+        """Generate batch of images"""
+        if negative_prompts is None:
+            negative_prompts = [""] * len(prompts)
 
-        # Process in batches for memory efficiency
-        for i in range(0, len(prompts), batch_size):
-            batch_prompts = prompts[i : i + batch_size]
+        all_images = []
+        for prompt, neg_prompt in zip(prompts, negative_prompts):
+            images = self.generate(prompt, neg_prompt, **kwargs)
+            all_images.extend(images)
 
-            # Generate batch
-            batch_results = self.pipe(prompt=batch_prompts, **kwargs)
+        return all_images
 
-            # Convert to individual results
-            for j, image in enumerate(batch_results.images):
-                results.append({"image": image, "prompt": batch_prompts[j]})
+
+class MultiLoRAInference:
+    """Inference with multiple LoRA adapters for different biomes"""
+
+    def __init__(
+        self,
+        base_model_id: str = "stabilityai/stable-diffusion-xl-base-1.0",
+        lora_dir: Union[str, Path] = "data/models/lora",
+        device: str = None,
+    ):
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.lora_dir = Path(lora_dir)
+
+        # Base inference engine
+        self.inference = LoRAInference(base_model_id, device)
+
+        # Discover available LoRAs
+        self.available_loras = self._discover_loras()
+        print(f"Found {len(self.available_loras)} LoRA adapters")
+
+    def _discover_loras(self) -> Dict[str, Path]:
+        """Find all trained LoRA adapters"""
+        loras = {}
+
+        if self.lora_dir.exists():
+            for lora_path in self.lora_dir.iterdir():
+                if lora_path.is_dir() and lora_path.name.startswith("lora_"):
+                    biome = lora_path.name.replace("lora_", "")
+                    checkpoint_path = lora_path / "final"
+                    if checkpoint_path.exists():
+                        loras[biome] = checkpoint_path
+                    else:
+                        # Find latest checkpoint
+                        checkpoints = list(lora_path.glob("checkpoint-*"))
+                        if checkpoints:
+                            latest = max(
+                                checkpoints, key=lambda p: int(p.name.split("-")[1])
+                            )
+                            loras[biome] = latest
+
+        return loras
+
+    def generate_for_biome(
+        self, biome: str, prompt: str, enhance_prompt: bool = True, **kwargs
+    ) -> List[Image.Image]:
+        """Generate using biome-specific LoRA"""
+
+        if biome not in self.available_loras:
+            print(f"Warning: No LoRA found for biome '{biome}', using base model")
+            return self.inference.generate(prompt, **kwargs)
+
+        # Load biome LoRA
+        self.inference.load_lora(self.available_loras[biome])
+
+        # Enhance prompt with biome context if requested
+        if enhance_prompt:
+            prompt = f"{biome} biome style, {prompt}"
+
+        return self.inference.generate(prompt, **kwargs)
+
+    def generate_comparison(
+        self, prompt: str, biomes: Optional[List[str]] = None, **kwargs
+    ) -> Dict[str, List[Image.Image]]:
+        """Generate same prompt with different biome LoRAs"""
+
+        if biomes is None:
+            biomes = list(self.available_loras.keys())
+
+        results = {}
+
+        # Generate with base model
+        results["base"] = self.inference.generate(prompt, **kwargs)
+
+        # Generate with each biome
+        for biome in biomes:
+            if biome in self.available_loras:
+                results[biome] = self.generate_for_biome(biome, prompt, **kwargs)
 
         return results
 
 
-class FastInference:
-    """Optimized inference with LCM for real-time generation"""
+def quick_generate(
+    prompt: str,
+    lora_path: Optional[Union[str, Path]] = None,
+    biome: Optional[str] = None,
+    **kwargs,
+) -> Image.Image:
+    """Quick generation helper function"""
 
-    def __init__(
-        self,
-        base_model: str = "runwayml/stable-diffusion-v1-5",
-        lcm_lora_id: str = "latent-consistency/lcm-lora-sdv1-5",
-    ):
-        self.base_model = base_model
-        self.lcm_lora_id = lcm_lora_id
-        self.pipe: StableDiffusionPipeline | None = None
+    if biome:
+        # Use multi-LoRA inference
+        multi_inference = MultiLoRAInference()
+        images = multi_inference.generate_for_biome(biome, prompt, **kwargs)
+    else:
+        # Use single LoRA or base model
+        inference = LoRAInference()
+        if lora_path:
+            inference.load_lora(lora_path)
+        images = inference.generate(prompt, **kwargs)
 
-    def setup_lcm(self) -> None:
-        """Setup LCM for 4-step generation"""
-        self.pipe = StableDiffusionPipeline.from_pretrained(
-            self.base_model,
-            torch_dtype=torch.float16,
-            safety_checker=None,
-            use_safetensors=True,
-        )
-
-        # Load LCM-LoRA
-        self.pipe.load_lora_weights(self.lcm_lora_id)
-
-        # Use LCM scheduler
-        self.pipe.scheduler = LCMScheduler.from_config(self.pipe.scheduler.config)
-
-        self.pipe = self.pipe.to("cuda")
-
-        # Enable optimizations
-        self.pipe.enable_xformers_memory_efficient_attention()
-        self.pipe.enable_vae_slicing()
-
-    def generate_fast(
-        self, prompt: str, num_inference_steps: int = 4, guidance_scale: float = 0.0
-    ) -> Dict[str, Any]:
-        """Generate with minimal steps using LCM"""
-
-        if self.pipe is None:
-            self.setup_lcm()
-
-        start = time.perf_counter()
-
-        result = self.pipe(
-            prompt=prompt,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,  # LCM uses 0.0 guidance
-            width=512,
-            height=512,
-        )
-
-        elapsed = time.perf_counter() - start
-
-        return {
-            "image": result.images[0],
-            "time": elapsed,
-            "fps": 1.0 / elapsed,
-            "method": "LCM",
-        }
-
-    def benchmark(self, prompt: str, runs: int = 10) -> Dict[str, float]:
-        """Benchmark generation speed"""
-        times = []
-
-        # Warmup
-        self.generate_fast(prompt)
-
-        # Benchmark runs
-        for _ in range(runs):
-            result = self.generate_fast(prompt)
-            times.append(result["time"])
-
-        return {
-            "mean_time": np.mean(times),
-            "std_time": np.std(times),
-            "min_time": np.min(times),
-            "max_time": np.max(times),
-            "mean_fps": 1.0 / np.mean(times),
-        }
+    return images[0] if images else None
