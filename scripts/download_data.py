@@ -29,6 +29,37 @@ except ImportError as e:
     sys.exit(1)
 
 
+def get_next_file_number(output_path: Path, category: str, sprite_type: str) -> int:
+    """
+    Get the next file number by checking existing files in the directory.
+    Returns the next available number based on the highest existing number.
+    """
+    if not output_path.exists():
+        return 0
+
+    pattern = f"{category}_{sprite_type}_*.png"
+    existing_files = list(output_path.glob(pattern))
+
+    if not existing_files:
+        return 0
+
+    # Extract numbers from existing filenames
+    numbers = []
+    for file in existing_files:
+        try:
+            # Extract the number part from filename like "category_type_0009.png"
+            name_parts = file.stem.split("_")
+            if len(name_parts) >= 3:
+                number_str = name_parts[-1]  # Get the last part (the number)
+                number = int(number_str)
+                numbers.append(number)
+        except (ValueError, IndexError):
+            continue
+
+    # Return next number after the highest found
+    return max(numbers) + 1 if numbers else 0
+
+
 class ComprehensiveGameAssetGenerator:
     """Ultra-detailed prompt generation for all 2D game art styles"""
 
@@ -278,6 +309,9 @@ def generate_comprehensive_assets(output_dir: Path, samples_per_type: int = 10) 
             output_path = output_dir / "raw" / "textures" / category
             output_path.mkdir(parents=True, exist_ok=True)
 
+            # Get starting number for this category/type combination
+            start_number = get_next_file_number(output_path, category, texture_type)
+
             for i in tqdm(range(samples_per_type), desc=f"{category}/{texture_type}"):
                 try:
                     texture = generator.generate_texture(
@@ -285,7 +319,9 @@ def generate_comprehensive_assets(output_dir: Path, samples_per_type: int = 10) 
                     )
 
                     img = Image.fromarray(texture.astype(np.uint8))
-                    filename = f"{category}_{texture_type}_{i:04d}.png"
+                    # Use auto-incremented number instead of loop index
+                    file_number = start_number + i
+                    filename = f"{category}_{texture_type}_{file_number:04d}.png"
                     filepath = output_path / filename
                     img.save(filepath, optimize=True)
 
@@ -311,6 +347,9 @@ def generate_comprehensive_assets(output_dir: Path, samples_per_type: int = 10) 
             output_path = output_dir / "raw" / "sprites" / category
             output_path.mkdir(parents=True, exist_ok=True)
 
+            # Get starting number for this category/type combination
+            start_number = get_next_file_number(output_path, category, sprite_type)
+
             for i in tqdm(range(samples_per_type), desc=f"{category}/{sprite_type}"):
                 try:
                     sprite = generator.generate_sprite(
@@ -318,7 +357,9 @@ def generate_comprehensive_assets(output_dir: Path, samples_per_type: int = 10) 
                     )
 
                     img = Image.fromarray(sprite.astype(np.uint8))
-                    filename = f"{category}_{sprite_type}_{i:04d}.png"
+                    # Use auto-incremented number instead of loop index
+                    file_number = start_number + i
+                    filename = f"{category}_{sprite_type}_{file_number:04d}.png"
                     filepath = output_path / filename
                     img.save(filepath, optimize=True)
 

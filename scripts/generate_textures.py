@@ -7,12 +7,16 @@ import os
 import sys
 import json
 import random
+import gc
+import argparse
 import numpy as np
+import torch
 from PIL import Image
 from pathlib import Path
 from datetime import datetime
 from tqdm import tqdm
 from typing import Tuple, Dict
+
 
 os.environ["HF_HOME"] = "D:\\huggingface"
 os.environ["TRANSFORMERS_CACHE"] = "D:\\huggingface\\transformers"
@@ -24,6 +28,102 @@ try:
 except ImportError as e:
     print(f"Missing: {e}")
     sys.exit(1)
+
+
+def optimize_prompt(prompt, max_tokens=75):
+    """Optimize prompts to fit within CLIP's 77 token limit while preserving key information"""
+
+    # Priority keywords that should be kept
+    priority_keywords = {
+        "texture": ["seamless", "tileable", "ultra high definition", "game texture"],
+        "sprite": ["pixel art", "transparent background", "game asset"],
+        "style": ["game art", "cartoon", "premium", "detailed"],
+        "technical": ["PBR", "normal mapping", "diffuse"],
+    }
+
+    # Remove redundant phrases
+    redundant_phrases = {
+        "highly detailed": "detailed",
+        "ultra detailed": "detailed",
+        "extremely detailed": "detailed",
+        "professional quality": "professional",
+        "high quality": "premium",
+        "full color artwork": "colorful",
+        "digital painting style": "digital art",
+        "highly saturated": "saturated",
+        "rich color palette": "vivid",
+        "photographic quality": "Game visuals",
+    }
+
+    # Replace redundant phrases
+    for long_phrase, short_phrase in redundant_phrases.items():
+        prompt = prompt.replace(long_phrase, short_phrase)
+
+    # Remove duplicate words
+    words = prompt.split()
+    seen = set()
+    unique_words = []
+    for word in words:
+        if word.lower() not in seen:
+            seen.add(word.lower())
+            unique_words.append(word)
+
+    # If still too long, prioritize important keywords
+    if len(unique_words) > max_tokens:
+        # Extract priority words
+        priority_words = []
+        other_words = []
+
+        for word in unique_words:
+            is_priority = False
+            for category, keywords in priority_keywords.items():
+                if any(keyword in word.lower() for keyword in keywords):
+                    is_priority = True
+                    break
+
+            if is_priority:
+                priority_words.append(word)
+            else:
+                other_words.append(word)
+
+        # Keep priority words and fill remaining space
+        remaining_space = max_tokens - len(priority_words)
+        final_words = priority_words + other_words[:remaining_space]
+        return " ".join(final_words)
+
+    return " ".join(unique_words)
+
+
+def get_next_file_number(output_path: Path, category: str, texture_type: str) -> int:
+    """
+    Get the next file number by checking existing files in the directory.
+    Returns the next available number based on the highest existing number.
+    """
+    if not output_path.exists():
+        return 0
+
+    pattern = f"{category}_{texture_type}_*.png"
+    existing_files = list(output_path.glob(pattern))
+
+    if not existing_files:
+        return 0
+
+    # Extract numbers from existing filenames
+    numbers = []
+    for file in existing_files:
+        try:
+            # Extract the number part from filename like "category_type_0009.png"
+            name_parts = file.stem.split("_")
+            if len(name_parts) >= 3:
+                number_str = name_parts[-1]  # Get the last part (the number)
+                number = int(number_str)
+                numbers.append(number)
+        except (ValueError, IndexError):
+            continue
+
+    # Return next number after the highest found
+    return max(numbers) + 1 if numbers else 0
+
 
 # Force GPU
 if not torch.cuda.is_available():
@@ -44,6 +144,8 @@ class TextureGenerator:
             cache_dir="D:\\huggingface\\hub",
         ).to(self.device)
 
+        # Optimize pipeline for texture generation
+        # self.pipe = optimize_existing_pipeline(self.pipe)
         self.pipe.enable_attention_slicing()
         self.pipe.enable_vae_tiling()
 
@@ -103,10 +205,15 @@ class TextureGenerator:
         self, category: str, texture_type: str, size: Tuple[int, int] = (768, 768)
     ) -> np.ndarray:
         """Generate texture with SDXL-Turbo and color enforcement"""
+
+        # Get the base prompt first
         prompt = self.texture_prompts.get(category, {}).get(
             texture_type,
             f"high quality seamless {texture_type} texture for {category} game, tileable, detailed",
         )
+
+        # Then optimize the prompt for texture generation
+        prompt = optimize_prompt(prompt)
 
         # Add color enforcement and style prompts
         enhanced_prompt = f"{prompt}, vibrant colors, full color artwork, digital painting style, highly saturated, rich color palette, professional game texture, photographic quality"
@@ -118,7 +225,7 @@ class TextureGenerator:
             image = self.pipe(
                 prompt=enhanced_prompt,
                 negative_prompt=negative_prompt,
-                num_inference_steps=6,  # More steps for quality
+                num_inference_steps=4,  # More steps for quality
                 guidance_scale=2.0,  # Small guidance for color
                 height=size[1],
                 width=size[0],
@@ -164,12 +271,22 @@ def generate_all_textures(output_dir: Path, samples_per_type: int = 10):
             output_path = output_dir / "raw" / "textures" / category
             output_path.mkdir(parents=True, exist_ok=True)
 
+            # Get starting number for this category/type combination
+            start_number = get_next_file_number(output_path, category, texture_type)
+
             for i in tqdm(range(samples_per_type), desc=f"{category}/{texture_type}"):
                 try:
+                    # Clear memory before each generation
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+
                     texture = generator.generate_texture(category, texture_type)
 
                     img = Image.fromarray(texture.astype(np.uint8))
-                    filename = f"{category}_{texture_type}_{i:04d}.png"
+                    # Use auto-incremented number instead of loop index
+                    file_number = start_number + i
+                    filename = f"{category}_{texture_type}_{file_number:04d}.png"
                     filepath = output_path / filename
                     img.save(filepath, optimize=True)
 
@@ -183,6 +300,11 @@ def generate_all_textures(output_dir: Path, samples_per_type: int = 10):
                         }
                     )
                     metadata["total_generated"] += 1
+
+                    # Clear memory after each generation
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
                 except Exception as e:
                     print(f"\nError: {e}")
@@ -201,7 +323,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", default="data")
-    parser.add_argument("--samples", type=int, default=10)
+    parser.add_argument("--samples", type=int, default=100)
     args = parser.parse_args()
 
     generate_all_textures(args.output_dir, args.samples)

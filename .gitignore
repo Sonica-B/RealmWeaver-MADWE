@@ -11,8 +11,8 @@ ENV/
 .env
 
 # Data
-# data/raw/*
-# data/processed/*
+data/raw/*
+data/processed/*
 !data/**/.gitkeep
 *.h5
 *.pkl
@@ -83,4 +83,5 @@ build/
 *.bak
 *.swp
 *~.nib
+scripts/keys.txt
 scripts/keys.txt
