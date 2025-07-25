@@ -20,7 +20,7 @@ data/processed/*
 *.npz
 
 # Configuration
-keys.txt
+key.txt
 
 # Models
 *.pth
@@ -86,6 +86,9 @@ build/
 *.bak
 *.swp
 *~.nib
+scripts/keys.txt
+scripts/keys.txt
+scripts/keys.txt
 scripts/keys.txt
 scripts/keys.txt
 scripts/keys.txt
