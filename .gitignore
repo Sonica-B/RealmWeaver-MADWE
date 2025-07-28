@@ -24,6 +24,9 @@ data/raw/**/*.jpg
 data/raw/**/*.jpeg
 data/processed/**/*.png
 data/processed/**/*.jpg
+data/samples/**/*.png
+data/samples/**/*.jpg
+data/chroma/
 !data/**/.gitkeep
 *.h5
 *.pkl
