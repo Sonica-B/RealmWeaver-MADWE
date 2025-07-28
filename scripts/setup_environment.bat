@@ -1,60 +1,50 @@
 @echo off
-REM Setup script for MADWE project on Windows
-
-echo Setting up MADWE development environment...
+REM Unity ML-Agents Environment Setup for MADWE Project
+echo Setting up Unity ML-Agents environment for MADWE...
 
 REM Check Python version
-python --version 2>&1 | findstr /C:"3.11" >nul
+python --version 2>&1 | findstr /C:"3.10" >nul
 if errorlevel 1 (
-    echo Error: Python 3.11.x is required
+    echo Error: Python 3.10.12 is required
     exit /b 1
 )
 
-REM Create virtual environment
-echo Creating virtual environment...
-python -m venv venv
+REM Create conda environment
+echo Creating conda environment 'madwe'...
+conda create -n madwe python=3.10.12 -y
+call conda activate madwe
 
-REM Activate virtual environment
-call venv\Scripts\activate.bat
+REM Clone ML-Agents
+echo Cloning Unity ML-Agents...
+git clone --branch release_22 https://github.com/Unity-Technologies/ml-agents.git
 
-REM Upgrade pip
-echo Upgrading pip...
-python -m pip install --upgrade pip
+REM Install ML-Agents Python package
+cd ml-agents
+pip install -e ./ml-agents-envs
+pip install -e ./ml-agents
 
-REM Install requirements
-echo Installing requirements...
-pip install --pre torch torchvision torchaudio 
-pip install -r requirements.txt
-pip install torch-tensorrt --no-deps
+REM Install additional requirements
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install mlagents-envs==1.1.0
 
+REM Create Unity project structure
+cd ..
+mkdir unity_project
+cd unity_project
+mkdir Assets Scripts Prefabs Materials
 
-
-REM Install package in development mode
-pip install -e .
-
-REM Create necessary directories
-echo Creating data directories...
-mkdir data\raw\textures 2>nul
-mkdir data\raw\sprites 2>nul
-mkdir data\raw\gameplay 2>nul
-mkdir data\processed\train 2>nul
-mkdir data\processed\val 2>nul
-mkdir data\processed\test 2>nul
-mkdir data\models\checkpoints 2>nul
-mkdir data\models\final 2>nul
-mkdir logs 2>nul
-mkdir outputs 2>nul
-
-REM Create .env file from example
-if not exist .env (
-    copy .env.example .env
-    echo Created .env file from .env.example
-)
+REM Create .gitignore for Unity
+echo Library/ > .gitignore
+echo Temp/ >> .gitignore
+echo Obj/ >> .gitignore
+echo Build/ >> .gitignore
+echo Builds/ >> .gitignore
+echo Logs/ >> .gitignore
+echo UserSettings/ >> .gitignore
 
 echo.
-echo Setup complete! 
-
-@REM Activating the virtual environment
-venv\Scripts\activate.bat
-
-echo Virtual environment activated.
+echo Unity ML-Agents environment setup complete!
+echo Next steps:
+echo 1. Open Unity Hub and create new project with Unity 2023.2 LTS
+echo 2. Import ML-Agents package (com.unity.ml-agents@3.0.0)
+echo 3. Import Sentis package (com.unity.sentis@2.0.0)
