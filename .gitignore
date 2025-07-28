@@ -1,4 +1,6 @@
+# ========================================
 # Python
+# ========================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -6,80 +8,164 @@ __pycache__/
 .Python
 env/
 venv/
+ml-agents/
 ENV/
 .venv
 .env
+*.pyc
 
-# Data
-# data/raw/*
-# data/processed/*
+
+# ========================================
+# Data & Models
+# ========================================
+# Keep folder structure but ignore large files
+data/raw/**/*.png
+data/raw/**/*.jpg
+data/raw/**/*.jpeg
+data/processed/**/*.png
+data/processed/**/*.jpg
 !data/**/.gitkeep
 *.h5
 *.pkl
 *.npy
 *.npz
 
-# Models
+# Model files
 *.pth
 *.pt
 *.onnx
 *.trt
 *.safetensors
-data/models/*
+data/models/checkpoints/
+data/models/final/
 !data/models/.gitkeep
 
-# Logs
+# ========================================
+# Logs & Outputs
+# ========================================
 logs/
 *.log
 wandb/
 outputs/
+agent_states/
 
-# IDE
+# ========================================
+# Unity Project
+# ========================================
+# Ignore Unity generated folders (large files)
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Unity specific ignores
+*.pidb
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Unity generated meta files for folders
+*.meta
+!*.*.meta
+
+# Unity crash reports
+sysinfo.txt
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# ========================================
+# INCLUDE Unity Project Files (Important!)
+# ========================================
+# Include all Unity assets and scripts
+!unity_project/
+!unity_project/Assets/
+!unity_project/Assets/**
+!unity_project/ProjectSettings/
+!unity_project/ProjectSettings/**
+!unity_project/Packages/
+!unity_project/Packages/**
+
+# Include meta files for assets
+!unity_project/Assets/**/*.meta
+!unity_project/ProjectSettings/*.asset
+
+# ========================================
+# IDE & Editors
+# ========================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.vs/
+*.csproj
+*.sln
+*.sublime-project
+*.sublime-workspace
 
-# OS
+# ========================================
+# OS Files
+# ========================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 desktop.ini
 
-# Unity
-unity_project/[Ll]ibrary/
-unity_project/[Tt]emp/
-unity_project/[Oo]bj/
-unity_project/[Bb]uild/
-unity_project/[Bb]uilds/
-unity_project/[Ll]ogs/
-unity_project/[Uu]ser[Ss]ettings/
-*.pidb
-*.suo
-*.user
-*.userprefs
-*.unityproj
-*.booproj
-
-# Jupyter
+# ========================================
+# Jupyter & Testing
+# ========================================
 .ipynb_checkpoints/
 *.ipynb_checkpoints
-
-# Testing
 .coverage
 .pytest_cache/
 htmlcov/
 *.cover
 .hypothesis/
 
+# ========================================
 # Package files
+# ========================================
 *.egg-info/
 dist/
 build/
 *.egg
 
+# ========================================
 # Temporary files
+# ========================================
 *.tmp
 *.bak
 *.swp
 *~.nib
+*.orig
+
+# ========================================
+# Project Specific
+# ========================================
+# StreamingAssets textures (generated)
+unity_project/Assets/StreamingAssets/Textures/**/*.png
+unity_project/Assets/StreamingAssets/Textures/**/*.jpg
+!unity_project/Assets/StreamingAssets/Textures/**/.gitkeep
+
+# Keep important project files
+!requirements.txt
+!setup.py
+!README.md
+!.gitignore
