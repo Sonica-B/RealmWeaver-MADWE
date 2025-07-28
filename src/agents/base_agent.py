@@ -140,7 +140,7 @@ class StateManager(Generic[T]):
             else:
                 raise ValueError(f"Checkpoint '{name}' not found")
 
-    def get_history(self, limit: int = 10) -> List[Tuple[str, Any, Any]]:
+    def get_history(self, limit: int = 10) -> List[tuple[str, Any, Any]]:
         """Get state history"""
         with self._lock:
             history = list(self._history)[-limit:]
