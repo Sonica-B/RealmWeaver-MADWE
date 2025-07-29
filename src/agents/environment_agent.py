@@ -1,478 +1,545 @@
 """
-Environment Generation Agent for MADWE
-Day 5: Complete implementation for terrain generation
+Environment generation agent for MADWE
+Day 8: Agent Communication - No Unity dependencies
 """
 
-import asyncio
-from typing import Dict, Any, List, Tuple, Optional, Set
-from pathlib import Path
-import numpy as np
 import time
-import json
+from typing import Tuple, Dict, Any, List, Optional
+import logging
+import numpy as np
 from dataclasses import dataclass
-from collections import defaultdict
+import json
 
-from .base_agent import BaseAgent, Message, MessageType, AgentState
-from wfc.hierarchical_wfc import HierarchicalWFC, WaveFunctionCollapse, BiomeTileRules
-from unity_bridge.communication import UnityBridge, UnityMessage
-from models.nwsg.graph_network import NeuralWorldStateGraph, WorldNode
+from .base_agent import BaseAgent, AgentConfig
+from unity_bridge.communication import Message, MessageType, MessagePriority, MessageRouter
+from .protocols import TerrainGenerationRequest, RequestType
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ChunkInfo:
-    """Information about a generated chunk"""
+@dataclass 
+class ChunkData:
+    """Data structure for world chunks"""
     position: Tuple[int, int]
     biome: str
-    tiles: np.ndarray
-    timestamp: float
-    generation_time: float
-    metadata: Dict[str, Any] = None
+    tiles: List[List[int]]
+    entities: List[Dict[str, Any]]
+    generated_at: float
+    version: int = 1
 
 
 class EnvironmentAgent(BaseAgent):
-    """Agent responsible for environment generation using WFC"""
+    """Environment generation agent - manages world state and terrain generation"""
     
-    def __init__(self, agent_id: str = "env_agent_01", 
-                 config: Optional[Dict[str, Any]] = None,
-                 message_bus = None):
-        super().__init__(agent_id, "environment", config, message_bus)
+    def __init__(self, config: AgentConfig, router: MessageRouter):
+        # Enable Unity compatibility for future integration
+        config.unity_compatible = True
+        super().__init__(config, router)
         
-        # Environment generation state
-        self.chunks: Dict[Tuple[int, int], ChunkInfo] = {}
-        self.active_chunks: Set[Tuple[int, int]] = set()
-        self.generation_queue: asyncio.Queue = asyncio.Queue()
-        
-        # Biome configuration
-        self.biomes = config.get('biomes', ['forest', 'desert', 'cyberpunk']) if config else ['forest', 'desert', 'cyberpunk']
-        self.current_biome = 'forest'
-        self.biome_transitions = self._setup_biome_transitions()
-        
-        # WFC setup
-        self.chunk_size = config.get('chunk_size', (32, 32)) if config else (32, 32)
-        self.wfc_configs = self._setup_wfc_configs()
-        self.hierarchical_wfc = HierarchicalWFC()
+        # World state management
+        self.world_state: Dict[str, ChunkData] = {}
+        self.active_regions: Dict[str, Dict[str, Any]] = {}
+        self.generation_queue = []
         
         # Performance tracking
+        self.chunks_generated = 0
         self.generation_times = []
-        self.cache_hits = 0
-        self.cache_misses = 0
-        self.max_cache_size = config.get('max_cache_size', 100) if config else 100
         
-        # External connections (set after creation)
-        self.unity_bridge: Optional[UnityBridge] = None
-        self.world_state_graph: Optional[NeuralWorldStateGraph] = None
+    def _initialize(self):
+        """Initialize environment agent"""
+        # Subscribe to relevant events
+        self.router.subscribe_event("player_moved", self.agent_id, self.on_player_moved)
+        self.router.subscribe_event("chunk_request", self.agent_id, self.on_chunk_request)
+        self.router.subscribe_event("biome_transition", self.agent_id, self.on_biome_transition)
         
-        # Generation parameters
-        self.generation_timeout = config.get('generation_timeout', 5.0) if config else 5.0
-        self.max_concurrent_generations = config.get('max_concurrent', 3) if config else 3
-        self.active_generations = 0
-        
-    async def _initialize(self):
-        """Custom initialization for environment agent"""
-        self.logger.info("Initializing environment agent components")
-        
-        # Pre-generate some common tile configurations
-        for biome in self.biomes:
-            self.wfc_configs[biome] = self._get_biome_tiles(biome)
-            
-        # Initialize chunk management
-        self.chunk_cleanup_task = None
-        
-    def _setup_wfc_configs(self) -> Dict[str, List]:
-        """Setup WFC configurations for each biome"""
-        return {
-            'forest': BiomeTileRules.get_forest_tiles(),
-            'desert': BiomeTileRules.get_desert_tiles(),
-            'cyberpunk': BiomeTileRules.get_cyberpunk_tiles()
-        }
-        
-    def _get_biome_tiles(self, biome: str):
-        """Get tiles for a specific biome"""
-        if biome == 'forest':
-            return BiomeTileRules.get_forest_tiles()
-        elif biome == 'desert':
-            return BiomeTileRules.get_desert_tiles()
-        elif biome == 'cyberpunk':
-            return BiomeTileRules.get_cyberpunk_tiles()
-        else:
-            return BiomeTileRules.get_forest_tiles()  # Default
-            
-    def _setup_biome_transitions(self) -> Dict[str, List[str]]:
-        """Define valid biome transitions"""
-        return {
-            'forest': ['forest', 'desert'],
-            'desert': ['desert', 'forest', 'cyberpunk'],
-            'cyberpunk': ['cyberpunk', 'desert']
-        }
-        
-    async def _run(self):
-        """Main agent loop"""
-        self.logger.info("Environment agent starting main loop")
-        
-        # Start chunk generation processor
-        asyncio.create_task(self._process_generation_queue())
-        
-        # Start chunk cleanup task
-        self.chunk_cleanup_task = asyncio.create_task(self._cleanup_chunks())
-        
-        while self.state == AgentState.READY:
-            await asyncio.sleep(0.1)
-            
-    async def _process_message(self, message: Message):
-        """Process incoming messages"""
-        try:
-            if message.type == MessageType.REQUEST:
-                await self._handle_request(message)
-            elif message.type == MessageType.COMMAND:
-                await self._handle_command(message)
-            elif message.type == MessageType.SYNC:
-                await self._handle_sync(message)
-        except Exception as e:
-            self.logger.error(f"Error processing message: {e}")
-            await self._send_error_response(message, str(e))
-            
-    async def _handle_request(self, message: Message):
-        """Handle generation requests"""
-        payload = message.payload
-        request_type = payload.get('request_type')
-        
-        if request_type == 'generate_chunk':
-            await self._queue_chunk_generation(
-                position=tuple(payload['position']),
-                biome=payload.get('biome', self.current_biome),
-                priority=payload.get('priority', 5),
-                requester=message.sender
-            )
-        elif request_type == 'query_chunk':
-            await self._handle_chunk_query(message)
-        elif request_type == 'get_stats':
-            await self._send_stats(message.sender)
-            
-    async def _handle_command(self, message: Message):
-        """Handle agent commands"""
+        logger.info(f"Environment agent {self.agent_id} initialized")
+    
+    def handle_command(self, message: Message):
+        """Handle generation commands"""
         command = message.payload.get('command')
         
-        if command == 'set_biome':
-            self.current_biome = message.payload.get('biome', self.current_biome)
+        if command == 'generate_chunk':
+            chunk_pos = message.payload.get('position')
+            biome = message.payload.get('biome', 'forest')
+            self.generate_chunk(chunk_pos, biome)
+            
+        elif command == 'generate_region':
+            region_pos = message.payload.get('position')
+            biome_type = message.payload.get('biome_type')
+            size = message.payload.get('size', (4, 4))
+            self.generate_region(region_pos, biome_type, size)
+            
         elif command == 'clear_cache':
-            self.chunks.clear()
-            self.cache_hits = 0
-            self.cache_misses = 0
-        elif command == 'pause_generation':
-            self.update_state(AgentState.PAUSED, "Generation paused")
-        elif command == 'resume_generation':
-            self.update_state(AgentState.READY, "Generation resumed")
-            
-    async def _queue_chunk_generation(self, position: Tuple[int, int], 
-                                    biome: str, priority: int = 5,
-                                    requester: str = None):
-        """Queue a chunk for generation"""
-        # Check cache first
-        if position in self.chunks:
-            self.cache_hits += 1
-            await self._send_chunk_response(position, requester)
-            return
-            
-        self.cache_misses += 1
+            area = message.payload.get('area')
+            self._clear_world_cache(area)
+    
+    def handle_query(self, message: Message):
+        """Handle world state queries"""
+        query_type = message.payload.get('query_type')
         
-        # Add to generation queue
-        await self.generation_queue.put({
+        if query_type == 'get_chunk':
+            chunk_pos = tuple(message.payload.get('position'))
+            chunk_data = self.get_chunk_data(chunk_pos)
+            
+            self.send_message(
+                message.sender_id,
+                MessageType.RESPONSE,
+                {
+                    'chunk_data': chunk_data.to_dict() if chunk_data else None,
+                    'position': chunk_pos
+                },
+                correlation_id=message.message_id
+            )
+            
+        elif query_type == 'get_region_info':
+            region_pos = tuple(message.payload.get('position'))
+            region_info = self.get_region_info(region_pos)
+            
+            self.send_message(
+                message.sender_id,
+                MessageType.RESPONSE,
+                {'region_info': region_info},
+                correlation_id=message.message_id
+            )
+            
+        elif query_type == 'world_stats':
+            stats = self.get_world_statistics()
+            self.send_message(
+                message.sender_id,
+                MessageType.RESPONSE,
+                {'stats': stats},
+                correlation_id=message.message_id
+            )
+    
+    def handle_state_update(self, message: Message):
+        """Handle state updates from other agents"""
+        update_type = message.payload.get('update_type')
+        
+        if update_type == 'chunk_modified':
+            chunk_pos = tuple(message.payload.get('position'))
+            modifications = message.payload.get('modifications')
+            self._apply_chunk_modifications(chunk_pos, modifications)
+            
+        elif update_type == 'entity_spawned':
+            chunk_pos = tuple(message.payload.get('chunk_position'))
+            entity_data = message.payload.get('entity')
+            self._add_entity_to_chunk(chunk_pos, entity_data)
+    
+    def handle_unity_request(self, message: Message):
+        """Handle Unity-specific requests when Unity bridge is available"""
+        request_type = message.payload.get('request_type')
+        
+        if request_type == 'immediate_chunk':
+            # High-priority chunk generation for Unity
+            position = tuple(message.payload.get('position'))
+            self._generate_chunk_immediate(position, message)
+            
+        elif request_type == 'chunk_batch':
+            # Batch chunk generation
+            positions = message.payload.get('positions', [])
+            self._handle_batch_generation(positions, message)
+    
+    def generate_chunk(self, position: Tuple[int, int], biome: str = None) -> ChunkData:
+        """Generate a new chunk at the specified position"""
+        start_time = time.time()
+        
+        # Check if chunk already exists
+        chunk_key = f"{position[0]}_{position[1]}"
+        if chunk_key in self.world_state:
+            logger.info(f"Chunk at {position} already exists")
+            return self.world_state[chunk_key]
+        
+        # Determine biome if not specified
+        if biome is None:
+            biome = self._determine_biome(position)
+        
+        # Generate chunk data
+        chunk_data = ChunkData(
+            position=position,
+            biome=biome,
+            tiles=self._generate_tiles(position, biome),
+            entities=self._generate_entities(position, biome),
+            generated_at=time.time()
+        )
+        
+        # Store in world state
+        self.world_state[chunk_key] = chunk_data
+        self.chunks_generated += 1
+        
+        # Track performance
+        generation_time = time.time() - start_time
+        self.generation_times.append(generation_time)
+        
+        # Notify other agents
+        self.publish_event('chunk_generated', {
             'position': position,
             'biome': biome,
-            'priority': priority,
-            'requester': requester,
-            'timestamp': time.time()
+            'chunk_key': chunk_key,
+            'generation_time': generation_time
         })
         
-    async def _process_generation_queue(self):
-        """Process chunk generation requests"""
-        while self.state != AgentState.SHUTDOWN:
-            if self.state == AgentState.PAUSED:
-                await asyncio.sleep(0.5)
-                continue
-                
-            try:
-                # Get next generation request
-                request = await asyncio.wait_for(
-                    self.generation_queue.get(), 
-                    timeout=0.5
-                )
-                
-                # Check if we can generate
-                if self.active_generations >= self.max_concurrent_generations:
-                    # Re-queue the request
-                    await self.generation_queue.put(request)
-                    await asyncio.sleep(0.1)
-                    continue
-                    
-                # Generate chunk
-                asyncio.create_task(self._generate_chunk_async(request))
-                
-            except asyncio.TimeoutError:
-                continue
-                
-    async def _generate_chunk_async(self, request: Dict[str, Any]):
-        """Generate a chunk asynchronously"""
-        self.active_generations += 1
-        start_time = time.time()
+        # Request assets for this chunk
+        self._request_chunk_assets(chunk_data)
         
-        position = request['position']
-        biome = request['biome']
-        requester = request.get('requester')
+        logger.info(f"Generated chunk at {position} ({biome}) in {generation_time:.3f}s")
         
-        try:
-            self.update_state(AgentState.BUSY, f"Generating chunk at {position}")
-            
-            # Get tiles for biome
-            tiles = self.wfc_configs.get(biome, self.wfc_configs['forest'])
-            
-            # Create WFC instance
-            wfc = WaveFunctionCollapse(tiles, self.chunk_size)
-            
-            # Generate with timeout
-            result = await asyncio.wait_for(
-                asyncio.to_thread(wfc.collapse),
-                timeout=self.generation_timeout
-            )
-            
-            if result is None:
-                raise ValueError("WFC generation failed")
-                
-            generation_time = time.time() - start_time
-            
-            # Create chunk info
-            chunk = ChunkInfo(
-                position=position,
-                biome=biome,
-                tiles=result,
-                timestamp=time.time(),
-                generation_time=generation_time,
-                metadata={
-                    'wfc_iterations': getattr(wfc, 'iterations', 0),
-                    'tile_diversity': len(np.unique(result))
-                }
-            )
-            
-            # Store in cache
-            self.chunks[position] = chunk
-            self.active_chunks.add(position)
-            
-            # Track performance
-            self.generation_times.append(generation_time)
-            if len(self.generation_times) > 100:
-                self.generation_times.pop(0)
-                
-            # Update world state graph if available
-            if self.world_state_graph:
-                await self._update_world_state(chunk)
-                
-            # Send to Unity if connected
-            if self.unity_bridge and self.unity_bridge.connected:
-                await self._send_to_unity(chunk)
-                
-            # Notify requester
-            if requester:
-                await self._send_chunk_response(position, requester)
-                
-            self.logger.info(f"Generated {biome} chunk at {position} in {generation_time:.2f}s")
-            
-        except asyncio.TimeoutError:
-            self.logger.error(f"Generation timeout for chunk at {position}")
-            if requester:
-                await self._send_error_response(
-                    None, 
-                    f"Generation timeout for chunk at {position}",
-                    requester
-                )
-        except Exception as e:
-            self.logger.error(f"Generation error for chunk at {position}: {e}")
-            if requester:
-                await self._send_error_response(None, str(e), requester)
-        finally:
-            self.active_generations -= 1
-            if self.active_generations == 0:
-                self.update_state(AgentState.READY, "Generation complete")
-                
-    async def _send_chunk_response(self, position: Tuple[int, int], 
-                                  recipient: str):
-        """Send chunk data to requester"""
-        if position not in self.chunks:
-            return
-            
-        chunk = self.chunks[position]
+        return chunk_data
+    
+    def generate_region(self, position: Tuple[int, int], biome_type: str, 
+                       size: Tuple[int, int] = (4, 4)):
+        """Generate a larger region with consistent biome"""
+        region_key = f"region_{position[0]}_{position[1]}"
         
-        await self.send_message(
-            recipient=recipient,
-            message_type=MessageType.RESPONSE,
-            payload={
-                'response_type': 'chunk_data',
-                'position': position,
-                'biome': chunk.biome,
-                'tiles': chunk.tiles.tolist(),
-                'generation_time': chunk.generation_time,
-                'metadata': chunk.metadata
-            }
-        )
-        
-    async def _send_error_response(self, original_message: Optional[Message], 
-                                  error: str, recipient: str = None):
-        """Send error response"""
-        recipient = recipient or (original_message.sender if original_message else None)
-        if not recipient:
-            return
-            
-        await self.send_message(
-            recipient=recipient,
-            message_type=MessageType.ERROR,
-            payload={
-                'error': error,
-                'original_request': original_message.payload if original_message else None
-            }
-        )
-        
-    async def _handle_sync(self, message: Message):
-        """Handle synchronization messages"""
-        sync_type = message.payload.get('sync_type')
-        
-        if sync_type == 'world_state':
-            # Update internal state based on world state
-            state_summary = message.payload.get('state_summary', {})
-            self.logger.debug(f"Received world state sync: {state_summary}")
-            # Could update active regions, coordinate with other agents, etc.
-            
-    async def _handle_chunk_query(self, message: Message):
-        """Handle chunk query requests"""
-        position = tuple(message.payload.get('position', [0, 0]))
-        
-        if position in self.chunks:
-            await self._send_chunk_response(position, message.sender)
-        else:
-            await self._send_error_response(message, f"Chunk at {position} not found", message.sender)
-            
-    async def _send_to_unity(self, chunk: ChunkInfo):
-        """Send chunk data to Unity"""
-        if not self.unity_bridge:
-            return
-            
-        # Convert numpy array to Unity format
-        tiles_data = []
-        for y in range(chunk.tiles.shape[0]):
-            for x in range(chunk.tiles.shape[1]):
-                tile_id = int(chunk.tiles[y, x])
-                tiles_data.append({
-                    'x': chunk.position[0] + x,
-                    'y': chunk.position[1] + y,
-                    'tile_id': tile_id,
-                    'biome': chunk.biome
-                })
-                
-        message = UnityMessage(
-            msg_type='chunk_generated',
-            data={
-                'position': chunk.position,
-                'biome': chunk.biome,
-                'tiles': tiles_data,
-                'generation_time': chunk.generation_time
-            }
-        )
-        
-        self.unity_bridge.send_message(message)
-        
-    async def _update_world_state(self, chunk: ChunkInfo):
-        """Update world state graph with new chunk"""
-        if not self.world_state_graph:
-            return
-            
-        # Create world node for chunk
-        node = WorldNode(
-            node_id=f"chunk_{chunk.position[0]}_{chunk.position[1]}",
-            node_type="terrain_chunk",
-            position=(chunk.position[0], 0, chunk.position[1]),
-            data={
-                'biome': chunk.biome,
-                'tile_diversity': chunk.metadata.get('tile_diversity', 0),
-                'generation_time': chunk.generation_time
-            },
-            timestamp=chunk.timestamp
-        )
-        
-        await self.world_state_graph.add_node(node)
-        
-    async def _cleanup_chunks(self):
-        """Periodically clean up old chunks"""
-        while self.state != AgentState.SHUTDOWN:
-            await asyncio.sleep(60)  # Every minute
-            
-            if len(self.chunks) > self.max_cache_size:
-                # Remove oldest chunks
-                sorted_chunks = sorted(
-                    self.chunks.items(),
-                    key=lambda x: x[1].timestamp
-                )
-                
-                remove_count = len(self.chunks) - self.max_cache_size
-                for position, _ in sorted_chunks[:remove_count]:
-                    del self.chunks[position]
-                    self.active_chunks.discard(position)
-                    
-                self.logger.info(f"Cleaned up {remove_count} old chunks")
-                
-    async def _send_stats(self, recipient: str):
-        """Send agent statistics"""
-        avg_gen_time = 0
-        if self.generation_times:
-            avg_gen_time = sum(self.generation_times) / len(self.generation_times)
-            
-        stats = {
-            'cached_chunks': len(self.chunks),
-            'active_chunks': len(self.active_chunks),
-            'cache_hits': self.cache_hits,
-            'cache_misses': self.cache_misses,
-            'cache_hit_rate': self.cache_hits / (self.cache_hits + self.cache_misses) if (self.cache_hits + self.cache_misses) > 0 else 0,
-            'avg_generation_time': avg_gen_time,
-            'active_generations': self.active_generations,
-            'queue_size': self.generation_queue.qsize()
+        region_data = {
+            'position': position,
+            'biome_type': biome_type,
+            'size': size,
+            'chunks': [],
+            'generated_at': time.time()
         }
         
-        await self.send_message(
-            recipient=recipient,
-            message_type=MessageType.RESPONSE,
-            payload={
-                'response_type': 'stats',
-                'stats': stats
-            }
-        )
+        # Generate chunks within region
+        for dx in range(size[0]):
+            for dy in range(size[1]):
+                chunk_pos = (position[0] * size[0] + dx, position[1] * size[1] + dy)
+                chunk = self.generate_chunk(chunk_pos, biome_type)
+                region_data['chunks'].append(chunk_pos)
         
-    async def generate_chunk(self, position: Tuple[int, int], 
-                           biome: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Public method to generate a chunk"""
-        biome = biome or self.current_biome
+        self.active_regions[region_key] = region_data
         
-        # Queue generation
-        await self._queue_chunk_generation(position, biome, priority=1)
+        # Notify completion
+        self.publish_event('region_generated', {
+            'position': position,
+            'biome': biome_type,
+            'chunk_count': size[0] * size[1]
+        })
+    
+    def get_chunk_data(self, position: Tuple[int, int]) -> Optional[ChunkData]:
+        """Get chunk data for a position"""
+        chunk_key = f"{position[0]}_{position[1]}"
+        return self.world_state.get(chunk_key)
+    
+    def get_region_info(self, position: Tuple[int, int]) -> Dict[str, Any]:
+        """Get information about a region"""
+        # Find chunks in region
+        region_chunks = []
+        region_size = 4  # Default region size
         
-        # Wait for generation (with timeout)
-        timeout = 10
-        start_time = time.time()
+        for dx in range(region_size):
+            for dy in range(region_size):
+                chunk_pos = (position[0] * region_size + dx, position[1] * region_size + dy)
+                chunk_key = f"{chunk_pos[0]}_{chunk_pos[1]}"
+                if chunk_key in self.world_state:
+                    region_chunks.append(chunk_pos)
         
-        while time.time() - start_time < timeout:
-            if position in self.chunks:
-                chunk = self.chunks[position]
-                return {
-                    'position': position,
-                    'biome': chunk.biome,
-                    'generation_time': chunk.generation_time,
-                    'metadata': chunk.metadata
+        return {
+            'position': position,
+            'generated_chunks': len(region_chunks),
+            'total_chunks': region_size * region_size,
+            'chunks': region_chunks,
+            'completeness': len(region_chunks) / (region_size * region_size)
+        }
+    
+    def get_world_statistics(self) -> Dict[str, Any]:
+        """Get world generation statistics"""
+        biome_counts = {}
+        entity_counts = {}
+        
+        for chunk in self.world_state.values():
+            # Count biomes
+            biome_counts[chunk.biome] = biome_counts.get(chunk.biome, 0) + 1
+            
+            # Count entities
+            for entity in chunk.entities:
+                entity_type = entity.get('type', 'unknown')
+                entity_counts[entity_type] = entity_counts.get(entity_type, 0) + 1
+        
+        avg_gen_time = (sum(self.generation_times) / len(self.generation_times)) if self.generation_times else 0
+        
+        return {
+            'total_chunks': len(self.world_state),
+            'chunks_generated': self.chunks_generated,
+            'active_regions': len(self.active_regions),
+            'biome_distribution': biome_counts,
+            'entity_distribution': entity_counts,
+            'avg_generation_time': avg_gen_time,
+            'memory_usage_mb': self._estimate_memory_usage()
+        }
+    
+    def _generate_tiles(self, position: Tuple[int, int], biome: str) -> List[List[int]]:
+        """Generate tile data for a chunk"""
+        # Simple tile generation - in production, use WFC
+        chunk_size = 32
+        tiles = []
+        
+        # Generate based on biome
+        tile_mappings = {
+            'forest': [0, 0, 0, 1, 1, 2],  # grass, grass, grass, tree, tree, path
+            'desert': [3, 3, 3, 3, 4, 5],  # sand variations, rock, oasis
+            'cyberpunk': [6, 6, 7, 7, 8, 9],  # road, building, neon, plaza
+            'dungeon': [10, 10, 10, 11, 12, 13]  # stone, wall, trap, treasure
+        }
+        
+        biome_tiles = tile_mappings.get(biome, [0])
+        
+        for y in range(chunk_size):
+            row = []
+            for x in range(chunk_size):
+                # Simple noise-based selection
+                noise = (x * 7 + y * 13 + position[0] * 31 + position[1] * 37) % len(biome_tiles)
+                row.append(biome_tiles[noise])
+            tiles.append(row)
+        
+        return tiles
+    
+    def _generate_entities(self, position: Tuple[int, int], biome: str) -> List[Dict[str, Any]]:
+        """Generate entities for a chunk"""
+        entities = []
+        
+        # Entity templates by biome
+        entity_templates = {
+            'forest': [
+                {'type': 'tree', 'density': 0.1},
+                {'type': 'animal', 'density': 0.02},
+                {'type': 'resource', 'subtype': 'herbs', 'density': 0.05}
+            ],
+            'desert': [
+                {'type': 'cactus', 'density': 0.05},
+                {'type': 'resource', 'subtype': 'minerals', 'density': 0.03}
+            ],
+            'cyberpunk': [
+                {'type': 'npc', 'subtype': 'citizen', 'density': 0.08},
+                {'type': 'vehicle', 'density': 0.04}
+            ],
+            'dungeon': [
+                {'type': 'enemy', 'subtype': 'skeleton', 'density': 0.06},
+                {'type': 'treasure', 'density': 0.02}
+            ]
+        }
+        
+        templates = entity_templates.get(biome, [])
+        chunk_size = 32
+        
+        for template in templates:
+            # Generate entities based on density
+            count = int(chunk_size * chunk_size * template['density'])
+            for _ in range(count):
+                entity = {
+                    'id': f"entity_{time.time()}_{np.random.randint(10000)}",
+                    'type': template['type'],
+                    'position': (
+                        np.random.randint(0, chunk_size),
+                        np.random.randint(0, chunk_size)
+                    )
                 }
-            await asyncio.sleep(0.1)
-            
-        return None
+                if 'subtype' in template:
+                    entity['subtype'] = template['subtype']
+                entities.append(entity)
         
-    async def _cleanup(self):
-        """Clean up resources"""
-        if self.chunk_cleanup_task:
-            self.chunk_cleanup_task.cancel()
+        return entities
+    
+    def _determine_biome(self, position: Tuple[int, int]) -> str:
+        """Determine biome based on position"""
+        # Simple biome generation based on position
+        biomes = ['forest', 'desert', 'cyberpunk', 'dungeon']
+        
+        # Use position to create biome regions
+        biome_index = (position[0] // 10 + position[1] // 10) % len(biomes)
+        return biomes[biome_index]
+    
+    def _request_chunk_assets(self, chunk_data: ChunkData):
+        """Request assets for newly generated chunk"""
+        # Send asset generation request
+        self.send_message(
+            "asset_agent",  # Assuming asset agent exists
+            MessageType.GENERATE_CONTENT,
+            {
+                'request_type': 'chunk_assets',
+                'chunk_position': chunk_data.position,
+                'biome': chunk_data.biome,
+                'tile_types': list(set(tile for row in chunk_data.tiles for tile in row)),
+                'entity_types': list(set(e['type'] for e in chunk_data.entities))
+            },
+            priority=MessagePriority.NORMAL
+        )
+    
+    def _apply_chunk_modifications(self, position: Tuple[int, int], 
+                                  modifications: Dict[str, Any]):
+        """Apply modifications to existing chunk"""
+        chunk_key = f"{position[0]}_{position[1]}"
+        if chunk_key in self.world_state:
+            chunk = self.world_state[chunk_key]
             
-        # Clear generation queue
-        while not self.generation_queue.empty():
-            self.generation_queue.get_nowait()
+            # Apply tile modifications
+            if 'tiles' in modifications:
+                for mod in modifications['tiles']:
+                    x, y, new_tile = mod['x'], mod['y'], mod['tile']
+                    if 0 <= x < len(chunk.tiles[0]) and 0 <= y < len(chunk.tiles):
+                        chunk.tiles[y][x] = new_tile
+            
+            # Update version
+            chunk.version += 1
+            
+            # Notify about modification
+            self.publish_event('chunk_modified', {
+                'position': position,
+                'version': chunk.version
+            })
+    
+    def _add_entity_to_chunk(self, position: Tuple[int, int], entity_data: Dict[str, Any]):
+        """Add entity to existing chunk"""
+        chunk_key = f"{position[0]}_{position[1]}"
+        if chunk_key in self.world_state:
+            chunk = self.world_state[chunk_key]
+            chunk.entities.append(entity_data)
+            chunk.version += 1
+    
+    def _clear_world_cache(self, area: Optional[Dict[str, Any]] = None):
+        """Clear world cache for area or entire world"""
+        if area is None:
+            # Clear entire world
+            cleared = len(self.world_state)
+            self.world_state.clear()
+            self.active_regions.clear()
+            logger.info(f"Cleared entire world cache ({cleared} chunks)")
+        else:
+            # Clear specific area
+            min_x = area.get('min_x', 0)
+            min_y = area.get('min_y', 0)
+            max_x = area.get('max_x', 100)
+            max_y = area.get('max_y', 100)
+            
+            chunks_to_remove = []
+            for chunk_key, chunk in self.world_state.items():
+                if min_x <= chunk.position[0] <= max_x and min_y <= chunk.position[1] <= max_y:
+                    chunks_to_remove.append(chunk_key)
+            
+            for chunk_key in chunks_to_remove:
+                del self.world_state[chunk_key]
+            
+            logger.info(f"Cleared {len(chunks_to_remove)} chunks from cache")
+    
+    def _generate_chunk_immediate(self, position: Tuple[int, int], message: Message):
+        """Generate chunk with highest priority for Unity"""
+        # Generate immediately
+        chunk = self.generate_chunk(position)
+        
+        # Send direct response
+        self.send_message(
+            message.sender_id,
+            MessageType.UNITY_RESPONSE,
+            {
+                'chunk_data': chunk.to_dict(),
+                'position': position
+            },
+            priority=MessagePriority.CRITICAL,
+            correlation_id=message.message_id
+        )
+    
+    def _handle_batch_generation(self, positions: List[Tuple[int, int]], message: Message):
+        """Handle batch chunk generation request"""
+        generated_chunks = []
+        
+        for pos in positions:
+            chunk = self.generate_chunk(tuple(pos))
+            generated_chunks.append({
+                'position': pos,
+                'chunk_key': f"{pos[0]}_{pos[1]}",
+                'biome': chunk.biome
+            })
+        
+        # Send batch response
+        self.send_message(
+            message.sender_id,
+            MessageType.UNITY_RESPONSE,
+            {
+                'batch_result': generated_chunks,
+                'count': len(generated_chunks)
+            },
+            priority=MessagePriority.HIGH,
+            correlation_id=message.message_id
+        )
+    
+    def _estimate_memory_usage(self) -> float:
+        """Estimate memory usage in MB"""
+        # Rough estimate: each chunk ~10KB
+        chunk_memory = len(self.world_state) * 0.01  # MB
+        region_memory = len(self.active_regions) * 0.001  # MB
+        return chunk_memory + region_memory
+    
+    def on_player_moved(self, message: Message):
+        """Handle player movement events"""
+        event_data = message.payload.get('event_data', {})
+        new_position = event_data.get('position')
+        
+        if new_position:
+            # Convert world position to chunk position
+            chunk_pos = (int(new_position[0] // 32), int(new_position[1] // 32))
+            
+            # Check if chunk exists
+            if not self.get_chunk_data(chunk_pos):
+                logger.info(f"Player moved to ungenerated chunk {chunk_pos}, generating...")
+                self.generate_chunk(chunk_pos)
+            
+            # Pre-generate surrounding chunks
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if dx == 0 and dy == 0:
+                        continue
+                    neighbor_pos = (chunk_pos[0] + dx, chunk_pos[1] + dy)
+                    if not self.get_chunk_data(neighbor_pos):
+                        # Queue for generation
+                        self.generation_queue.append(neighbor_pos)
+    
+    def on_chunk_request(self, message: Message):
+        """Handle chunk request events"""
+        event_data = message.payload.get('event_data', {})
+        position = tuple(event_data.get('position'))
+        priority = event_data.get('priority', 'normal')
+        requester = message.payload.get('source_agent')
+        
+        if priority == 'urgent' or not self.get_chunk_data(position):
+            # Generate immediately
+            chunk = self.generate_chunk(position)
+            
+            # Notify requester
+            if requester:
+                self.send_message(
+                    requester,
+                    MessageType.STATE_UPDATE,
+                    {
+                        'update_type': 'chunk_ready',
+                        'position': position,
+                        'chunk_data': chunk.to_dict()
+                    }
+                )
+    
+    def on_biome_transition(self, message: Message):
+        """Handle biome transition events"""
+        event_data = message.payload.get('event_data', {})
+        from_biome = event_data.get('from_biome')
+        to_biome = event_data.get('to_biome')
+        transition_zone = event_data.get('transition_zone')
+        
+        logger.info(f"Handling biome transition: {from_biome} -> {to_biome}")
+        
+        # Could implement smooth transition generation here
+        if transition_zone:
+            # Generate transition chunks with mixed biome features
+            pass
+
+
+# Extension for ChunkData to support serialization
+def chunk_data_to_dict(chunk: ChunkData) -> Dict[str, Any]:
+    """Convert ChunkData to dictionary"""
+    return {
+        'position': chunk.position,
+        'biome': chunk.biome,
+        'tiles': chunk.tiles,
+        'entities': chunk.entities,
+        'generated_at': chunk.generated_at,
+        'version': chunk.version
+    }
+
+# Add method to ChunkData
+ChunkData.to_dict = chunk_data_to_dict

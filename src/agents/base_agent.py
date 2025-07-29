@@ -1,336 +1,318 @@
 """
-Base Agent Framework for MADWE
-Day 5: Multi-Agent Foundation with state management
+Base Agent class for MADWE multi-agent system
+Day 8 - Production Code
 """
 
-import asyncio
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Callable
-from dataclasses import dataclass, field
-from enum import Enum
-import json
+from typing import Any, Callable, Dict, Optional, List
+import threading
 import logging
-from datetime import datetime
-import uuid
-from collections import deque
 import time
+from dataclasses import dataclass, field
+from enum import Enum, auto
 
+from unity_bridge.communication import (
+    Message, MessageType, MessagePriority, MessageRouter
+)
 
-class MessageType(Enum):
-    """Standard message types for inter-agent communication"""
-    REQUEST = "request"
-    RESPONSE = "response"
-    BROADCAST = "broadcast"
-    HEARTBEAT = "heartbeat"
-    STATUS_QUERY = "status_query"
-    STATUS_RESPONSE = "status_response"
-    ERROR = "error"
-    SYNC = "sync"
-    UPDATE = "update"
-    COMMAND = "command"
+logger = logging.getLogger(__name__)
 
 
 class AgentState(Enum):
     """Agent lifecycle states"""
-    INITIALIZING = "initializing"
-    READY = "ready"
-    BUSY = "busy"
-    PAUSED = "paused"
-    ERROR = "error"
-    SHUTTING_DOWN = "shutting_down"
-    SHUTDOWN = "shutdown"
+    INITIALIZING = auto()
+    READY = auto()
+    RUNNING = auto()
+    PAUSED = auto()
+    STOPPING = auto()
+    STOPPED = auto()
+    ERROR = auto()
 
 
 @dataclass
-class Message:
-    """Standard message format for inter-agent communication"""
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    type: MessageType = MessageType.REQUEST
-    sender: str = ""
-    recipient: Optional[str] = None  # None means broadcast
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    payload: Dict[str, Any] = field(default_factory=dict)
-    correlation_id: Optional[str] = None
-    priority: int = 5  # 1-10, 1 being highest
-    ttl: Optional[int] = None
-    requires_ack: bool = False
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert message to dictionary"""
-        return {
-            "id": self.id,
-            "type": self.type.value,
-            "sender": self.sender,
-            "recipient": self.recipient,
-            "timestamp": self.timestamp,
-            "payload": self.payload,
-            "correlation_id": self.correlation_id,
-            "priority": self.priority,
-            "ttl": self.ttl,
-            "requires_ack": self.requires_ack
-        }
-
-
-class MessageBus:
-    """Central message bus for agent communication"""
-    
-    def __init__(self):
-        self.subscribers: Dict[str, List[Callable]] = {}
-        self.agents: Dict[str, 'BaseAgent'] = {}
-        self.message_queue: asyncio.Queue = asyncio.Queue()
-        self.message_history: deque = deque(maxlen=1000)
-        self.running = False
-        
-    async def register_agent(self, agent: 'BaseAgent'):
-        """Register an agent with the message bus"""
-        self.agents[agent.agent_id] = agent
-        logging.info(f"Registered agent: {agent.agent_id}")
-        
-    async def unregister_agent(self, agent_id: str):
-        """Unregister an agent"""
-        if agent_id in self.agents:
-            del self.agents[agent_id]
-            logging.info(f"Unregistered agent: {agent_id}")
-            
-    async def publish(self, message: Message):
-        """Publish a message to the bus"""
-        await self.message_queue.put(message)
-        self.message_history.append(message)
-        
-    async def subscribe(self, agent_id: str, callback: Callable):
-        """Subscribe to messages"""
-        if agent_id not in self.subscribers:
-            self.subscribers[agent_id] = []
-        self.subscribers[agent_id].append(callback)
-        
-    async def start(self):
-        """Start the message bus"""
-        self.running = True
-        asyncio.create_task(self._process_messages())
-        
-    async def _process_messages(self):
-        """Process messages from the queue"""
-        while self.running:
-            try:
-                message = await asyncio.wait_for(
-                    self.message_queue.get(), 
-                    timeout=0.1
-                )
-                
-                # Route message
-                if message.recipient:
-                    # Direct message
-                    if message.recipient in self.subscribers:
-                        for callback in self.subscribers[message.recipient]:
-                            asyncio.create_task(callback(message))
-                else:
-                    # Broadcast
-                    for agent_id, callbacks in self.subscribers.items():
-                        if agent_id != message.sender:
-                            for callback in callbacks:
-                                asyncio.create_task(callback(message))
-                                
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                logging.error(f"Error processing message: {e}")
+class AgentConfig:
+    """Configuration for agent initialization"""
+    agent_id: str
+    agent_type: str = "generic"
+    queue_size: int = 1000
+    message_timeout: float = 1.0
+    enable_async: bool = False
+    custom_config: Dict[str, Any] = field(default_factory=dict)
 
 
 class BaseAgent(ABC):
-    """Base class for all agents in the multi-agent system"""
+    """Base class for all agents"""
     
-    def __init__(self, agent_id: str, agent_type: str, 
-                 config: Optional[Dict[str, Any]] = None,
-                 message_bus: Optional[MessageBus] = None):
-        self.agent_id = agent_id
-        self.agent_type = agent_type
-        self.config = config or {}
-        self.message_bus = message_bus
+    def __init__(self, config: AgentConfig, router: MessageRouter):
+        self.config = config
+        self.agent_id = config.agent_id
+        self.router = router
         
         # State management
         self.state = AgentState.INITIALIZING
-        self.internal_state: Dict[str, Any] = {}
-        self.state_history: deque = deque(maxlen=100)
+        self._running = False
+        self._thread = None
         
         # Message handling
-        self.inbox: asyncio.Queue = asyncio.Queue()
-        self.outbox: asyncio.Queue = asyncio.Queue()
-        self.pending_requests: Dict[str, Message] = {}
+        self._message_handlers: Dict[MessageType, Callable] = {}
+        self._event_handlers: Dict[str, List[Callable]] = {}
+        self._pending_responses: Dict[str, Message] = {}
         
         # Performance tracking
-        self.metrics = {
-            "messages_sent": 0,
-            "messages_received": 0,
-            "processing_times": deque(maxlen=100),
-            "errors": 0
-        }
+        self._processed_messages = 0
+        self._processing_times: List[float] = []
+        self._last_heartbeat = time.time()
         
-        # Logger
-        self.logger = logging.getLogger(f"{self.agent_type}.{self.agent_id}")
+        # Register with router
+        self.router.register_agent(config.agent_id, config.queue_size)
         
-    async def initialize(self):
-        """Initialize the agent"""
-        self.logger.info(f"Initializing agent {self.agent_id}")
+        # Set up handlers
+        self._setup_handlers()
         
-        # Register with message bus
-        if self.message_bus:
-            await self.message_bus.register_agent(self)
-            await self.message_bus.subscribe(self.agent_id, self._handle_message)
-            
-        # Custom initialization
-        await self._initialize()
+        # Initialize agent-specific components
+        self._initialize()
         
         self.state = AgentState.READY
-        self.logger.info(f"Agent {self.agent_id} initialized")
-        
+        logger.info(f"Agent {self.agent_id} initialized (type: {config.agent_type})")
+    
+    def _setup_handlers(self):
+        """Set up default message handlers"""
+        self._message_handlers[MessageType.COMMAND] = self.handle_command
+        self._message_handlers[MessageType.QUERY] = self.handle_query
+        self._message_handlers[MessageType.STATE_UPDATE] = self.handle_state_update
+        self._message_handlers[MessageType.RESPONSE] = self._handle_response
+        self._message_handlers[MessageType.COORDINATION] = self.handle_coordination
+    
     @abstractmethod
-    async def _initialize(self):
-        """Custom initialization logic"""
+    def _initialize(self):
+        """Initialize agent-specific components"""
         pass
-        
-    async def start(self):
-        """Start the agent"""
-        self.logger.info(f"Starting agent {self.agent_id}")
-        
-        # Start message processing
-        asyncio.create_task(self._process_inbox())
-        asyncio.create_task(self._process_outbox())
-        
-        # Start main loop
-        asyncio.create_task(self._run())
-        
-        # Send heartbeat
-        asyncio.create_task(self._heartbeat_loop())
-        
+    
     @abstractmethod
-    async def _run(self):
-        """Main agent loop"""
+    def handle_command(self, message: Message):
+        """Handle command messages"""
         pass
-        
-    async def _handle_message(self, message: Message):
-        """Handle incoming message"""
-        await self.inbox.put(message)
-        self.metrics["messages_received"] += 1
-        
-    async def _process_inbox(self):
-        """Process incoming messages"""
-        while self.state not in [AgentState.SHUTTING_DOWN, AgentState.SHUTDOWN]:
-            try:
-                message = await asyncio.wait_for(self.inbox.get(), timeout=0.1)
-                
-                start_time = time.time()
-                await self._process_message(message)
-                processing_time = time.time() - start_time
-                
-                self.metrics["processing_times"].append(processing_time)
-                
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                self.logger.error(f"Error processing message: {e}")
-                self.metrics["errors"] += 1
-                
+    
     @abstractmethod
-    async def _process_message(self, message: Message):
-        """Process a single message"""
+    def handle_query(self, message: Message):
+        """Handle query messages"""
         pass
-        
-    async def _process_outbox(self):
-        """Send outgoing messages"""
-        while self.state not in [AgentState.SHUTTING_DOWN, AgentState.SHUTDOWN]:
-            try:
-                message = await asyncio.wait_for(self.outbox.get(), timeout=0.1)
-                
-                if self.message_bus:
-                    await self.message_bus.publish(message)
-                    
-                self.metrics["messages_sent"] += 1
-                
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                self.logger.error(f"Error sending message: {e}")
-                
-    async def send_message(self, recipient: Optional[str], 
-                          message_type: MessageType,
-                          payload: Dict[str, Any],
-                          priority: int = 5,
-                          requires_response: bool = False) -> Optional[str]:
-        """Send a message to another agent"""
+    
+    @abstractmethod
+    def handle_state_update(self, message: Message):
+        """Handle state update messages"""
+        pass
+    
+    def handle_coordination(self, message: Message):
+        """Handle multi-agent coordination messages"""
+        coord_type = message.payload.get('coordination_type')
+        if coord_type == 'sync':
+            self._handle_sync_request(message)
+    
+    def _handle_response(self, message: Message):
+        """Handle response messages"""
+        if message.correlation_id and message.correlation_id in self._pending_responses:
+            self._pending_responses[message.correlation_id] = message
+    
+    def _handle_sync_request(self, message: Message):
+        """Handle synchronization requests"""
+        sync_data = self.get_sync_data()
+        self.send_message(
+            message.sender_id,
+            MessageType.RESPONSE,
+            {
+                'sync_data': sync_data,
+                'timestamp': time.time()
+            },
+            correlation_id=message.message_id
+        )
+    
+    def get_sync_data(self) -> Dict[str, Any]:
+        """Get synchronization data - override in subclasses"""
+        return {
+            'agent_id': self.agent_id,
+            'state': self.state.name,
+            'processed_messages': self._processed_messages
+        }
+    
+    def send_message(self, recipient_id: str, message_type: MessageType, 
+                    payload: Dict[str, Any], priority: MessagePriority = MessagePriority.NORMAL,
+                    correlation_id: Optional[str] = None) -> bool:
+        """Send message to another agent"""
         message = Message(
-            type=message_type,
-            sender=self.agent_id,
-            recipient=recipient,
-            payload=payload,
+            sender_id=self.agent_id,
+            recipient_id=recipient_id,
+            message_type=message_type,
             priority=priority,
-            requires_ack=requires_response
+            payload=payload,
+            correlation_id=correlation_id
+        )
+        return self.router.route_message(message)
+    
+    def send_and_wait(self, recipient_id: str, message_type: MessageType,
+                     payload: Dict[str, Any], timeout: float = 1.0) -> Optional[Message]:
+        """Send message and wait for response"""
+        correlation_id = str(time.time())
+        message = Message(
+            sender_id=self.agent_id,
+            recipient_id=recipient_id,
+            message_type=message_type,
+            payload=payload,
+            correlation_id=correlation_id
         )
         
-        if requires_response:
-            self.pending_requests[message.id] = message
-            
-        await self.outbox.put(message)
-        return message.id
+        # Clear any old response
+        self._pending_responses.pop(correlation_id, None)
         
-    async def broadcast(self, message_type: MessageType, 
-                       payload: Dict[str, Any],
-                       priority: int = 5):
-        """Broadcast a message to all agents"""
-        await self.send_message(None, message_type, payload, priority)
+        # Send message
+        if not self.router.route_message(message):
+            return None
         
-    def update_state(self, new_state: AgentState, reason: str = ""):
-        """Update agent state"""
-        old_state = self.state
-        self.state = new_state
+        # Wait for response
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if correlation_id in self._pending_responses:
+                return self._pending_responses.pop(correlation_id)
+            time.sleep(0.01)
         
-        self.state_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "old_state": old_state.value,
-            "new_state": new_state.value,
-            "reason": reason
-        })
+        return None
+    
+    def broadcast(self, payload: Dict[str, Any], priority: MessagePriority = MessagePriority.NORMAL):
+        """Broadcast message to all agents"""
+        message = Message(
+            sender_id=self.agent_id,
+            message_type=MessageType.BROADCAST,
+            priority=priority,
+            payload=payload
+        )
+        return self.router.route_message(message)
+    
+    def publish_event(self, event_type: str, event_data: Dict[str, Any],
+                     priority: MessagePriority = MessagePriority.NORMAL):
+        """Publish an event"""
+        message = Message(
+            sender_id=self.agent_id,
+            message_type=MessageType.EVENT,
+            priority=priority,
+            payload={
+                'event_type': event_type,
+                'event_data': event_data,
+                'source_agent': self.agent_id
+            }
+        )
+        return self.router.route_message(message)
+    
+    def subscribe_event(self, event_type: str, handler: Callable):
+        """Subscribe to an event type"""
+        if event_type not in self._event_handlers:
+            self._event_handlers[event_type] = []
+        self._event_handlers[event_type].append(handler)
         
-        self.logger.info(f"State change: {old_state.value} -> {new_state.value} ({reason})")
+        # Register with router
+        self.router.subscribe_event(event_type, self.agent_id, handler)
+    
+    def start(self):
+        """Start agent message processing"""
+        if self.state not in [AgentState.READY, AgentState.STOPPED]:
+            logger.warning(f"Cannot start agent in state: {self.state}")
+            return
         
-    def get_metrics(self) -> Dict[str, Any]:
-        """Get agent performance metrics"""
-        avg_processing_time = 0
-        if self.metrics["processing_times"]:
-            avg_processing_time = sum(self.metrics["processing_times"]) / len(self.metrics["processing_times"])
-            
+        self._running = True
+        self.state = AgentState.RUNNING
+        
+        # Start sync processing thread
+        self._thread = threading.Thread(target=self._process_messages, daemon=True)
+        self._thread.start()
+        
+        logger.info(f"Agent {self.agent_id} started")
+    
+    def stop(self):
+        """Stop agent gracefully"""
+        if self.state != AgentState.RUNNING:
+            return
+        
+        logger.info(f"Stopping agent {self.agent_id}")
+        self.state = AgentState.STOPPING
+        self._running = False
+        
+        # Wait for thread to finish
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5.0)
+        
+        # Cleanup
+        self.router.unregister_agent(self.agent_id)
+        self.state = AgentState.STOPPED
+        logger.info(f"Agent {self.agent_id} stopped")
+    
+    def pause(self):
+        """Pause agent processing"""
+        self.state = AgentState.PAUSED
+        logger.info(f"Agent {self.agent_id} paused")
+    
+    def resume(self):
+        """Resume agent processing"""
+        if self.state == AgentState.PAUSED:
+            self.state = AgentState.RUNNING
+            logger.info(f"Agent {self.agent_id} resumed")
+    
+    def _process_messages(self):
+        """Main message processing loop"""
+        while self._running:
+            try:
+                if self.state != AgentState.RUNNING:
+                    time.sleep(0.1)
+                    continue
+                
+                # Get next message
+                message = self.router.get_message(
+                    self.agent_id, 
+                    timeout=self.config.message_timeout
+                )
+                
+                if message:
+                    start_time = time.time()
+                    self._handle_message(message)
+                    processing_time = time.time() - start_time
+                    
+                    # Track metrics
+                    self._processed_messages += 1
+                    self._processing_times.append(processing_time)
+                    if len(self._processing_times) > 100:
+                        self._processing_times.pop(0)
+                
+                # Send heartbeat periodically
+                if time.time() - self._last_heartbeat > 10.0:
+                    self._send_heartbeat()
+                    
+            except Exception as e:
+                logger.error(f"Error processing message in {self.agent_id}: {e}", exc_info=True)
+                self.state = AgentState.ERROR
+    
+    def _handle_message(self, message: Message):
+        """Route message to appropriate handler"""
+        handler = self._message_handlers.get(message.message_type)
+        if handler:
+            handler(message)
+        else:
+            logger.warning(f"No handler for message type: {message.message_type} in {self.agent_id}")
+    
+    def _send_heartbeat(self):
+        """Send heartbeat message"""
+        self.publish_event('agent_heartbeat', {
+            'agent_id': self.agent_id,
+            'state': self.state.name,
+            'processed_messages': self._processed_messages,
+            'avg_processing_time': sum(self._processing_times) / len(self._processing_times) if self._processing_times else 0
+        }, priority=MessagePriority.LOW)
+        self._last_heartbeat = time.time()
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get agent statistics"""
         return {
-            "agent_id": self.agent_id,
-            "state": self.state.value,
-            "messages_sent": self.metrics["messages_sent"],
-            "messages_received": self.metrics["messages_received"],
-            "avg_processing_time": avg_processing_time,
-            "errors": self.metrics["errors"]
+            'agent_id': self.agent_id,
+            'agent_type': self.config.agent_type,
+            'state': self.state.name,
+            'processed_messages': self._processed_messages,
+            'avg_processing_time_ms': (sum(self._processing_times) / len(self._processing_times) * 1000) if self._processing_times else 0,
+            'uptime_seconds': time.time() - self._last_heartbeat + 10
         }
-        
-    async def _heartbeat_loop(self):
-        """Send periodic heartbeats"""
-        while self.state not in [AgentState.SHUTTING_DOWN, AgentState.SHUTDOWN]:
-            await self.broadcast(
-                MessageType.HEARTBEAT,
-                {"metrics": self.get_metrics()}
-            )
-            await asyncio.sleep(30)  # Every 30 seconds
-            
-    async def shutdown(self):
-        """Shutdown the agent"""
-        self.logger.info(f"Shutting down agent {self.agent_id}")
-        self.update_state(AgentState.SHUTTING_DOWN, "Shutdown requested")
-        
-        # Clean up resources
-        await self._cleanup()
-        
-        # Unregister from message bus
-        if self.message_bus:
-            await self.message_bus.unregister_agent(self.agent_id)
-            
-        self.update_state(AgentState.SHUTDOWN, "Shutdown complete")
-        
-    @abstractmethod
-    async def _cleanup(self):
-        """Custom cleanup logic"""
-        pass
