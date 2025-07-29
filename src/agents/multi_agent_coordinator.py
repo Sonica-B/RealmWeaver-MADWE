@@ -10,8 +10,8 @@ from datetime import datetime
 
 from .base_agent import BaseAgent, MessageBus, AgentState, MessageType
 from .environment_agent import EnvironmentAgent
-from ..unity_bridge.communication import UnityBridge
-from ..models.nwsg.graph_network import NeuralWorldStateGraph
+from unity_bridge.communication import UnityBridge
+from models.nwsg.graph_network import NeuralWorldStateGraph
 
 
 class MultiAgentCoordinator:
