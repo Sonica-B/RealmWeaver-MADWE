@@ -13,9 +13,9 @@ from dataclasses import dataclass
 from collections import defaultdict
 
 from .base_agent import BaseAgent, Message, MessageType, AgentState
-from ..wfc.hierarchical_wfc import HierarchicalWFC, WaveFunctionCollapse, BiomeTileRules
-from ..unity_bridge.communication import UnityBridge, UnityMessage
-from ..models.nwsg.graph_network import NeuralWorldStateGraph, WorldNode
+from wfc.hierarchical_wfc import HierarchicalWFC, WaveFunctionCollapse, BiomeTileRules
+from unity_bridge.communication import UnityBridge, UnityMessage
+from models.nwsg.graph_network import NeuralWorldStateGraph, WorldNode
 
 
 @dataclass
@@ -330,6 +330,25 @@ class EnvironmentAgent(BaseAgent):
             }
         )
         
+    async def _handle_sync(self, message: Message):
+        """Handle synchronization messages"""
+        sync_type = message.payload.get('sync_type')
+        
+        if sync_type == 'world_state':
+            # Update internal state based on world state
+            state_summary = message.payload.get('state_summary', {})
+            self.logger.debug(f"Received world state sync: {state_summary}")
+            # Could update active regions, coordinate with other agents, etc.
+            
+    async def _handle_chunk_query(self, message: Message):
+        """Handle chunk query requests"""
+        position = tuple(message.payload.get('position', [0, 0]))
+        
+        if position in self.chunks:
+            await self._send_chunk_response(position, message.sender)
+        else:
+            await self._send_error_response(message, f"Chunk at {position} not found", message.sender)
+            
     async def _send_to_unity(self, chunk: ChunkInfo):
         """Send chunk data to Unity"""
         if not self.unity_bridge:
