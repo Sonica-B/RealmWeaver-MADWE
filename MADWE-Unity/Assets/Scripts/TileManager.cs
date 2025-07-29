@@ -173,11 +173,22 @@ public class TileManager : MonoBehaviour
         }
     }
     
+    void ProcessTileUpdate(Newtonsoft.Json.Linq.JObject data)
+    {
+        ProcessChunkData(data);
+    }
+    
+    public void CreateTileGrid(int width, int height)
+    {
+        ClearChunk();
+        Debug.Log($"Created empty {width}x{height} tile grid");
+    }
+    
     void ProcessChunkData(Newtonsoft.Json.Linq.JObject data)
     {
         // Extract chunk information
-        int width = data["width"].Value<int>();
-        int height = data["height"].Value<int>();
+        int width = data["width"].ToObject<int>();
+        int height = data["height"].ToObject<int>();
         var tiles = data["tiles"].ToObject<List<TileData>>();
         
         // Clear existing tiles (optional)
@@ -271,8 +282,8 @@ public class TileManager : MonoBehaviour
     
     void LogPerformanceStats(Newtonsoft.Json.Linq.JObject stats)
     {
-        float latency = stats["avg_latency"].Value<float>();
-        float fps = stats["generation_fps"].Value<float>();
+        float latency = stats["avg_latency"].ToObject<float>();
+        float fps = stats["generation_fps"].ToObject<float>();
         Debug.Log($"Performance - Latency: {latency:F1}ms, Generation FPS: {fps:F1}");
     }
     
