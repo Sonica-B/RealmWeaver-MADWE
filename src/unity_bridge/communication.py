@@ -1,394 +1,314 @@
 """
-Unity-Python Bridge Communication System
-Day 2: Real-time communication between Unity and Python
+Agent Communication System for MADWE
+Day 8 - Production Code
 """
 
-import socket
-import threading
 import json
-import queue
 import time
-import struct
-from typing import Dict, Any, Callable, Optional
-from dataclasses import dataclass
+import uuid
+from collections import defaultdict, deque
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+import heapq
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import logging
-import numpy as np
-import asyncio
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class MessageType(Enum):
+    """Types of messages in the system"""
+    COMMAND = auto()
+    QUERY = auto()
+    RESPONSE = auto()
+    EVENT = auto()
+    BROADCAST = auto()
+    STATE_UPDATE = auto()
+    COORDINATION = auto()
+    GENERATE_CONTENT = auto()
+    VALIDATE_COHERENCE = auto()
+    PREDICT_PLAYER = auto()
+
+
+class MessagePriority(Enum):
+    """Message priority levels"""
+    CRITICAL = 0
+    HIGH = 1
+    NORMAL = 2
+    LOW = 3
+    BACKGROUND = 4
 
 
 @dataclass
-class UnityMessage:
-    """Message structure for Unity communication"""
-    msg_type: str
-    data: Dict[str, Any]
-    timestamp: float = None
+class Message:
+    """Message structure for agent communication"""
+    message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    sender_id: str = ""
+    recipient_id: str = ""
+    message_type: MessageType = MessageType.EVENT
+    priority: MessagePriority = MessagePriority.NORMAL
+    payload: Dict[str, Any] = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
+    ttl: float = 60.0
+    correlation_id: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
     
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = time.time()
-            
-    def to_bytes(self) -> bytes:
-        """Convert to bytes for transmission"""
-        json_str = json.dumps({
-            'type': self.msg_type,
-            'data': self.data,
-            'timestamp': self.timestamp
+    def __lt__(self, other):
+        return self.priority.value < other.priority.value
+    
+    def is_expired(self) -> bool:
+        return time.time() - self.timestamp > self.ttl
+    
+    def to_json(self) -> str:
+        return json.dumps({
+            "message_id": self.message_id,
+            "sender_id": self.sender_id,
+            "recipient_id": self.recipient_id,
+            "message_type": self.message_type.name,
+            "priority": self.priority.name,
+            "payload": self.payload,
+            "timestamp": self.timestamp,
+            "ttl": self.ttl,
+            "correlation_id": self.correlation_id,
+            "metadata": self.metadata
         })
-        
-        # Prefix with length for proper framing
-        json_bytes = json_str.encode('utf-8')
-        length_prefix = struct.pack('!I', len(json_bytes))
-        return length_prefix + json_bytes
-        
+    
     @classmethod
-    def from_bytes(cls, data: bytes) -> 'UnityMessage':
-        """Create message from bytes"""
-        json_str = data.decode('utf-8')
-        msg_dict = json.loads(json_str)
+    def from_json(cls, json_str: str) -> 'Message':
+        data = json.loads(json_str)
         return cls(
-            msg_type=msg_dict['type'],
-            data=msg_dict['data'],
-            timestamp=msg_dict.get('timestamp', time.time())
+            message_id=data.get("message_id"),
+            sender_id=data.get("sender_id", ""),
+            recipient_id=data.get("recipient_id", ""),
+            message_type=MessageType[data.get("message_type", "EVENT")],
+            priority=MessagePriority[data.get("priority", "NORMAL")],
+            payload=data.get("payload", {}),
+            timestamp=data.get("timestamp", time.time()),
+            ttl=data.get("ttl", 60.0),
+            correlation_id=data.get("correlation_id"),
+            metadata=data.get("metadata", {})
         )
 
 
-class UnityBridge:
-    """Main Unity-Python communication bridge"""
+class MessageQueue:
+    """Priority-based message queue with expiration handling"""
     
-    def __init__(self, host: str = '127.0.0.1', port: int = 5005):
-        self.host = host
-        self.port = port
-        self.server_socket = None
-        self.client_socket = None
-        self.connected = False
+    def __init__(self, max_size: int = 10000):
+        self.max_size = max_size
+        self._queue = []
+        self._lock = threading.Lock()
+        self._not_empty = threading.Condition(self._lock)
+        self._message_count = 0
+        self._dropped_count = 0
         
-        # Message queues
-        self.send_queue = queue.Queue(maxsize=1000)
-        self.receive_queue = queue.Queue(maxsize=1000)
-        
-        # Message handlers
-        self.handlers: Dict[str, Callable] = {}
-        
-        # Threading
-        self.running = False
-        self.server_thread = None
-        self.receive_thread = None
-        self.send_thread = None
-        
-        # Performance tracking
-        self.latency_buffer = []
-        self.max_latency_samples = 100
-        
-        # Logging
-        self.logger = logging.getLogger('UnityBridge')
-        
-    def start(self):
-        """Start the bridge server"""
-        self.running = True
-        
-        # Create server socket
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(1)
-        
-        # Start server thread
-        self.server_thread = threading.Thread(target=self._server_loop)
-        self.server_thread.daemon = True
-        self.server_thread.start()
-        
-        self.logger.info(f"Unity bridge started on {self.host}:{self.port}")
-        
-    def stop(self):
-        """Stop the bridge"""
-        self.running = False
-        
-        if self.client_socket:
-            self.client_socket.close()
-        if self.server_socket:
-            self.server_socket.close()
+    def put(self, message: Message) -> bool:
+        with self._lock:
+            if len(self._queue) >= self.max_size:
+                if self._queue and message.priority.value < self._queue[-1][0]:
+                    heapq.heappop(self._queue)
+                    self._dropped_count += 1
+                else:
+                    self._dropped_count += 1
+                    return False
             
-        # Wait for threads to finish
-        if self.server_thread:
-            self.server_thread.join(timeout=1)
-        if self.receive_thread:
-            self.receive_thread.join(timeout=1)
-        if self.send_thread:
-            self.send_thread.join(timeout=1)
+            heapq.heappush(self._queue, (message.priority.value, time.time(), message))
+            self._message_count += 1
+            self._not_empty.notify()
+            return True
+    
+    def get(self, timeout: Optional[float] = None) -> Optional[Message]:
+        with self._lock:
+            end_time = time.time() + timeout if timeout else None
             
-        self.logger.info("Unity bridge stopped")
-        
-    def _server_loop(self):
-        """Main server loop accepting connections"""
-        while self.running:
-            try:
-                # Set timeout to allow periodic checks
-                self.server_socket.settimeout(1.0)
+            while True:
+                self._clean_expired()
                 
-                try:
-                    client_socket, address = self.server_socket.accept()
-                    self.logger.info(f"Unity connected from {address}")
-                    
-                    # Handle new connection
-                    self._handle_connection(client_socket)
-                    
-                except socket.timeout:
-                    continue
-                    
-            except Exception as e:
-                if self.running:
-                    self.logger.error(f"Server error: {e}")
-                    
-    def _handle_connection(self, client_socket: socket.socket):
-        """Handle Unity client connection"""
-        self.client_socket = client_socket
-        self.client_socket.settimeout(0.1)  # Non-blocking with timeout
-        self.connected = True
-        
-        # Start communication threads
-        self.receive_thread = threading.Thread(target=self._receive_loop)
-        self.receive_thread.daemon = True
-        self.receive_thread.start()
-        
-        self.send_thread = threading.Thread(target=self._send_loop)
-        self.send_thread.daemon = True
-        self.send_thread.start()
-        
-        # Send initial handshake
-        handshake = UnityMessage(
-            msg_type='handshake',
-            data={'status': 'ready', 'version': '1.0'}
-        )
-        self.send_message(handshake)
-        
-    def _receive_loop(self):
-        """Receive messages from Unity"""
-        buffer = b''
-        
-        while self.running and self.connected:
-            try:
-                # Receive data
-                data = self.client_socket.recv(4096)
+                if self._queue:
+                    _, _, message = heapq.heappop(self._queue)
+                    return message
                 
-                if not data:
-                    # Connection closed
-                    self.connected = False
-                    break
-                    
-                buffer += data
+                if timeout is None:
+                    return None
                 
-                # Process complete messages
-                while len(buffer) >= 4:
-                    # Read message length
-                    msg_length = struct.unpack('!I', buffer[:4])[0]
-                    
-                    if len(buffer) >= 4 + msg_length:
-                        # Extract complete message
-                        msg_data = buffer[4:4 + msg_length]
-                        buffer = buffer[4 + msg_length:]
-                        
-                        # Parse message
-                        try:
-                            message = UnityMessage.from_bytes(msg_data)
-                            
-                            # Track latency
-                            if 'sent_time' in message.data:
-                                latency = (time.time() - message.data['sent_time']) * 1000
-                                self._track_latency(latency)
-                                
-                            # Add to receive queue
-                            self.receive_queue.put(message)
-                            
-                            # Process handlers
-                            self._process_message(message)
-                            
-                        except Exception as e:
-                            self.logger.error(f"Message parse error: {e}")
-                    else:
-                        # Wait for more data
-                        break
-                        
-            except socket.timeout:
-                continue
-            except Exception as e:
-                if self.running:
-                    self.logger.error(f"Receive error: {e}")
-                    self.connected = False
-                    break
-                    
-    def _send_loop(self):
-        """Send messages to Unity"""
-        while self.running and self.connected:
-            try:
-                # Get message from queue with timeout
-                message = self.send_queue.get(timeout=0.1)
+                remaining = end_time - time.time() if end_time else None
+                if remaining is not None and remaining <= 0:
+                    return None
                 
-                # Add timing info
-                message.data['sent_time'] = time.time()
-                
-                # Send message
-                msg_bytes = message.to_bytes()
-                self.client_socket.sendall(msg_bytes)
-                
-            except queue.Empty:
-                continue
-            except Exception as e:
-                if self.running:
-                    self.logger.error(f"Send error: {e}")
-                    self.connected = False
-                    break
-                    
-    def _process_message(self, message: UnityMessage):
-        """Process received message with handlers"""
-        handler = self.handlers.get(message.msg_type)
-        if handler:
-            try:
-                handler(message)
-            except Exception as e:
-                self.logger.error(f"Handler error for {message.msg_type}: {e}")
-                
-    def send_message(self, message: UnityMessage):
-        """Send message to Unity"""
-        if not self.connected:
-            self.logger.warning("Not connected to Unity")
-            return
-            
-        try:
-            self.send_queue.put(message, timeout=0.1)
-        except queue.Full:
-            self.logger.warning("Send queue full, dropping message")
-            
-    def register_handler(self, msg_type: str, handler: Callable[[UnityMessage], None]):
-        """Register message handler"""
-        self.handlers[msg_type] = handler
+                self._not_empty.wait(remaining)
+    
+    def _clean_expired(self):
+        cleaned = []
+        while self._queue:
+            priority, timestamp, message = heapq.heappop(self._queue)
+            if not message.is_expired():
+                cleaned.append((priority, timestamp, message))
         
-    def _track_latency(self, latency_ms: float):
-        """Track communication latency"""
-        self.latency_buffer.append(latency_ms)
-        if len(self.latency_buffer) > self.max_latency_samples:
-            self.latency_buffer.pop(0)
-            
-    def get_latency_stats(self) -> Dict[str, float]:
-        """Get latency statistics"""
-        if not self.latency_buffer:
-            return {'avg': 0, 'min': 0, 'max': 0}
-            
-        return {
-            'avg': np.mean(self.latency_buffer),
-            'min': np.min(self.latency_buffer),
-            'max': np.max(self.latency_buffer),
-            'p95': np.percentile(self.latency_buffer, 95)
-        }
-        
-    def send_tile_update(self, tiles: np.ndarray, position: tuple[int, int]):
-        """Send tile update to Unity"""
-        message = UnityMessage(
-            msg_type='tile_update',
-            data={
-                'tiles': tiles.tolist(),
-                'position': list(position),
-                'size': list(tiles.shape),
-                'biome': 'forest'  # You'll need to pass this as parameter
+        for item in cleaned:
+            heapq.heappush(self._queue, item)
+    
+    def size(self) -> int:
+        with self._lock:
+            return len(self._queue)
+    
+    def get_stats(self) -> Dict[str, int]:
+        with self._lock:
+            priority_counts = defaultdict(int)
+            for _, _, msg in self._queue:
+                priority_counts[msg.priority.name] += 1
+                
+            return {
+                "current_size": len(self._queue),
+                "total_processed": self._message_count,
+                "total_dropped": self._dropped_count,
+                "priority_distribution": dict(priority_counts)
             }
-        )
-        self.send_message(message)
-        
-    def send_asset_generated(self, asset_id: str, asset_path: str, metadata: Dict[str, Any]):
-        """Notify Unity of generated asset"""
-        message = UnityMessage(
-            msg_type='asset_generated',
-            data={
-                'asset_id': asset_id,
-                'path': asset_path,
-                'metadata': metadata
-            }
-        )
-        self.send_message(message)
-        
-    def request_player_state(self) -> Optional[Dict[str, Any]]:
-        """Request current player state from Unity"""
-        request = UnityMessage(
-            msg_type='get_player_state',
-            data={'request_id': str(time.time())}
-        )
-        
-        # Send request
-        self.send_message(request)
-        
-        # Wait for response (simplified - in production use correlation IDs)
-        start_time = time.time()
-        timeout = 0.1  # 100ms timeout
-        
-        while time.time() - start_time < timeout:
-            try:
-                msg = self.receive_queue.get(timeout=0.01)
-                if msg.msg_type == 'player_state':
-                    return msg.data
-            except queue.Empty:
-                continue
-                
-        return None
 
 
-class UnityBridgeAsync:
-    """Async version of Unity bridge for integration with async agents"""
+class EventSubscription:
+    """Event subscription management"""
     
-    def __init__(self, bridge: UnityBridge):
-        self.bridge = bridge
-        self.response_futures: Dict[str, asyncio.Future] = {}
+    def __init__(self):
+        self._subscriptions: Dict[str, Dict[str, List[Callable]]] = defaultdict(lambda: defaultdict(list))
+        self._pattern_subscriptions: List[Tuple[str, Callable, Dict[str, Any]]] = []
+        self._lock = threading.RLock()
         
-    async def send_and_wait(self, message: UnityMessage, timeout: float = 0.1) -> Optional[UnityMessage]:
-        """Send message and wait for response"""
-        request_id = str(time.time())
-        message.data['request_id'] = request_id
+    def subscribe(self, event_type: str, subscriber_id: str, callback: Callable):
+        with self._lock:
+            self._subscriptions[event_type][subscriber_id].append(callback)
+    
+    def subscribe_pattern(self, pattern: str, callback: Callable, metadata: Dict[str, Any] = None):
+        with self._lock:
+            self._pattern_subscriptions.append((pattern, callback, metadata or {}))
+    
+    def unsubscribe(self, event_type: str, subscriber_id: str):
+        with self._lock:
+            if event_type in self._subscriptions:
+                self._subscriptions[event_type].pop(subscriber_id, None)
+    
+    def get_subscribers(self, event_type: str) -> List[Callable]:
+        with self._lock:
+            subscribers = []
+            
+            # Direct subscriptions
+            if event_type in self._subscriptions:
+                for callbacks in self._subscriptions[event_type].values():
+                    subscribers.extend(callbacks)
+            
+            # Pattern subscriptions
+            for pattern, callback, _ in self._pattern_subscriptions:
+                if self._match_pattern(pattern, event_type):
+                    subscribers.append(callback)
+            
+            return subscribers
+    
+    def _match_pattern(self, pattern: str, event_type: str) -> bool:
+        if '*' not in pattern:
+            return pattern == event_type
         
-        # Create future for response
-        future = asyncio.Future()
-        self.response_futures[request_id] = future
+        parts = pattern.split('*')
+        if not event_type.startswith(parts[0]):
+            return False
+        if len(parts) > 1 and not event_type.endswith(parts[-1]):
+            return False
+        return True
+
+
+class MessageRouter:
+    """Routes messages between agents with priority handling"""
+    
+    def __init__(self, num_workers: int = 4):
+        self._agent_queues: Dict[str, MessageQueue] = {}
+        self._broadcast_queue = MessageQueue(max_size=1000)
+        self._event_subscriptions = EventSubscription()
+        self._routing_table: Dict[str, str] = {}
+        self._workers = ThreadPoolExecutor(max_workers=num_workers)
+        self._running = False
+        self._stats = defaultdict(int)
+        self._lock = threading.RLock()
         
-        # Send message
-        self.bridge.send_message(message)
+    def register_agent(self, agent_id: str, queue_size: int = 1000):
+        with self._lock:
+            if agent_id not in self._agent_queues:
+                self._agent_queues[agent_id] = MessageQueue(max_size=queue_size)
+                self._routing_table[agent_id] = agent_id
+                logger.info(f"Registered agent: {agent_id}")
+    
+    def unregister_agent(self, agent_id: str):
+        with self._lock:
+            self._agent_queues.pop(agent_id, None)
+            self._routing_table.pop(agent_id, None)
+            logger.info(f"Unregistered agent: {agent_id}")
+    
+    def route_message(self, message: Message) -> bool:
+        with self._lock:
+            self._stats['total_messages'] += 1
+            
+            # Handle broadcasts
+            if message.message_type == MessageType.BROADCAST or not message.recipient_id:
+                self._stats['broadcasts'] += 1
+                return self._broadcast_queue.put(message)
+            
+            # Handle events
+            if message.message_type == MessageType.EVENT:
+                self._stats['events'] += 1
+                self._handle_event(message)
+                return True
+            
+            # Direct routing
+            if message.recipient_id in self._agent_queues:
+                self._stats['direct_messages'] += 1
+                return self._agent_queues[message.recipient_id].put(message)
+            
+            self._stats['unroutable'] += 1
+            logger.warning(f"Cannot route message to unknown agent: {message.recipient_id}")
+            return False
+    
+    def _handle_event(self, message: Message):
+        event_type = message.payload.get('event_type', 'unknown')
+        subscribers = self._event_subscriptions.get_subscribers(event_type)
         
+        for callback in subscribers:
+            self._workers.submit(self._safe_callback, callback, message)
+    
+    def _safe_callback(self, callback: Callable, message: Message):
         try:
-            # Wait for response
-            response = await asyncio.wait_for(future, timeout=timeout)
-            return response
-        except asyncio.TimeoutError:
-            return None
-        finally:
-            # Clean up
-            self.response_futures.pop(request_id, None)
+            callback(message)
+        except Exception as e:
+            logger.error(f"Error in event callback: {e}")
+    
+    def get_message(self, agent_id: str, timeout: Optional[float] = None) -> Optional[Message]:
+        with self._lock:
+            if agent_id not in self._agent_queues:
+                return None
             
-    def handle_response(self, message: UnityMessage):
-        """Handle response messages"""
-        request_id = message.data.get('request_id')
-        if request_id and request_id in self.response_futures:
-            self.response_futures[request_id].set_result(message)
-
-
-# Example usage
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    
-    # Create and start bridge
-    bridge = UnityBridge()
-    bridge.start()
-    
-    # Register handlers
-    def handle_player_action(message: UnityMessage):
-        print(f"Player action: {message.data}")
-        
-    bridge.register_handler('player_action', handle_player_action)
-    
-    # Keep running
-    try:
-        while True:
-            time.sleep(1)
+            # Check direct queue first
+            message = self._agent_queues[agent_id].get(timeout=0)
+            if message:
+                return message
             
-            # Print stats
-            if bridge.connected:
-                stats = bridge.get_latency_stats()
-                print(f"Latency: {stats['avg']:.1f}ms (min: {stats['min']:.1f}, max: {stats['max']:.1f})")
-                
-    except KeyboardInterrupt:
-        bridge.stop()
+            # Check broadcast queue
+            return self._broadcast_queue.get(timeout=timeout)
+    
+    def subscribe_event(self, event_type: str, agent_id: str, callback: Callable):
+        self._event_subscriptions.subscribe(event_type, agent_id, callback)
+        self._stats['subscriptions'] += 1
+    
+    def get_stats(self) -> Dict[str, Any]:
+        with self._lock:
+            stats = dict(self._stats)
+            stats['agent_count'] = len(self._agent_queues)
+            stats['queue_stats'] = {}
+            
+            for agent_id, queue in self._agent_queues.items():
+                stats['queue_stats'][agent_id] = queue.get_stats()
+            
+            return stats
+    
+    def shutdown(self):
+        self._running = False
+        self._workers.shutdown(wait=True)
+        logger.info("Message router shutdown complete")
