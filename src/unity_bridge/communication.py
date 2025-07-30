@@ -15,7 +15,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 import logging
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -141,7 +140,10 @@ class MessageQueue:
                 self._not_empty.wait(remaining)
     
     def _clean_expired(self):
+        """Remove expired messages"""
+        current_time = time.time()
         cleaned = []
+        
         while self._queue:
             priority, timestamp, message = heapq.heappop(self._queue)
             if not message.is_expired():
@@ -150,53 +152,37 @@ class MessageQueue:
         for item in cleaned:
             heapq.heappush(self._queue, item)
     
-    def size(self) -> int:
-        with self._lock:
-            return len(self._queue)
-    
     def get_stats(self) -> Dict[str, int]:
         with self._lock:
-            priority_counts = defaultdict(int)
-            for _, _, msg in self._queue:
-                priority_counts[msg.priority.name] += 1
-                
             return {
-                "current_size": len(self._queue),
-                "total_processed": self._message_count,
-                "total_dropped": self._dropped_count,
-                "priority_distribution": dict(priority_counts)
+                'queue_size': len(self._queue),
+                'total_messages': self._message_count,
+                'dropped_messages': self._dropped_count
             }
 
 
 class EventSubscription:
-    """Event subscription management"""
+    """Manages event subscriptions with pattern matching"""
     
     def __init__(self):
-        self._subscriptions: Dict[str, Dict[str, List[Callable]]] = defaultdict(lambda: defaultdict(list))
-        self._pattern_subscriptions: List[Tuple[str, Callable, Dict[str, Any]]] = []
+        self._subscriptions: Dict[str, List[Tuple[str, Callable]]] = defaultdict(list)
+        self._pattern_subscriptions: List[Tuple[str, Callable, str]] = []
         self._lock = threading.RLock()
-        
-    def subscribe(self, event_type: str, subscriber_id: str, callback: Callable):
-        with self._lock:
-            self._subscriptions[event_type][subscriber_id].append(callback)
     
-    def subscribe_pattern(self, pattern: str, callback: Callable, metadata: Dict[str, Any] = None):
+    def subscribe(self, event_type: str, agent_id: str, callback: Callable):
         with self._lock:
-            self._pattern_subscriptions.append((pattern, callback, metadata or {}))
-    
-    def unsubscribe(self, event_type: str, subscriber_id: str):
-        with self._lock:
-            if event_type in self._subscriptions:
-                self._subscriptions[event_type].pop(subscriber_id, None)
+            if '*' in event_type:
+                self._pattern_subscriptions.append((event_type, callback, agent_id))
+            else:
+                self._subscriptions[event_type].append((agent_id, callback))
     
     def get_subscribers(self, event_type: str) -> List[Callable]:
         with self._lock:
             subscribers = []
             
             # Direct subscriptions
-            if event_type in self._subscriptions:
-                for callbacks in self._subscriptions[event_type].values():
-                    subscribers.extend(callbacks)
+            for agent_id, callback in self._subscriptions.get(event_type, []):
+                subscribers.append(callback)
             
             # Pattern subscriptions
             for pattern, callback, _ in self._pattern_subscriptions:
@@ -284,14 +270,14 @@ class MessageRouter:
         with self._lock:
             if agent_id not in self._agent_queues:
                 return None
-            
-            # Check direct queue first
-            message = self._agent_queues[agent_id].get(timeout=0)
-            if message:
-                return message
-            
-            # Check broadcast queue
-            return self._broadcast_queue.get(timeout=timeout)
+        
+        # Try direct queue first
+        message = self._agent_queues[agent_id].get(timeout=timeout)
+        if message:
+            return message
+        
+        # If no direct message, check broadcast queue
+        return self._broadcast_queue.get(timeout=0)
     
     def subscribe_event(self, event_type: str, agent_id: str, callback: Callable):
         self._event_subscriptions.subscribe(event_type, agent_id, callback)
