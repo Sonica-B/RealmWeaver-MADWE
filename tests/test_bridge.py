@@ -1,8 +1,9 @@
 """The bridge seam: HTTP routes, chunk JSON against the Unity fixture, WebSocket ready events, the operator page.
 
 The plan's six tests come first, unchanged in substance (ruff format splits their one-liners). The world behind the
-TestClient uses the procedural generator with 64 px assets. Tests that post `/player` use the client as a context
-manager: prewarm runs on a background task, which needs one event loop across the requests and the WebSocket.
+TestClient uses the procedural generator with 64 px assets on a two-slot `ThreadRunner`, as the bridge serves it:
+`/chunk` waits for the world's job, `/player` schedules prewarm and returns, and ready events reach the WebSocket
+from whichever thread finished the chunk.
 """
 
 from __future__ import annotations
@@ -22,7 +23,8 @@ from PIL import Image
 
 from realmweaver.assets import ProceduralGenerator
 from realmweaver.bridge import create_app
-from realmweaver.world import World
+from realmweaver.types import Generator
+from realmweaver.world import ThreadRunner, World
 
 FIXTURE = Path(__file__).parent / "fixtures" / "chunk_example.json"
 ASSET_SIZE = 64
@@ -33,8 +35,14 @@ def _small_assets(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REALMWEAVER_ASSET_SIZE", str(ASSET_SIZE))
 
 
+def _world(generator: Generator | None = None) -> World:
+    return World(
+        "forest", generator or ProceduralGenerator(), chunk_size=8, seed=1, runner=ThreadRunner(slots=2)
+    )
+
+
 def _client() -> TestClient:
-    return TestClient(create_app(World("forest", ProceduralGenerator(), chunk_size=8, seed=1)))
+    return TestClient(create_app(_world()))
 
 
 # --- the plan's tests ---------------------------------------------------------------------------------
@@ -214,19 +222,49 @@ def test_player_response_lists_prewarmed_chunks_that_then_exist():
         assert c.get("/stats").json()["chunks"] >= 1 + len({tuple(k) for k in warmed})
 
 
-def test_resident_png_is_served_while_the_generator_lock_is_held():
-    app = create_app(World("forest", ProceduralGenerator(), chunk_size=8, seed=1))
-    c = TestClient(app)
+def test_resident_png_is_served_while_a_chunk_is_generating(gated_generator):
+    gen = gated_generator
+    world = _world(gen)
+    c = TestClient(create_app(world))
     ids = list(c.get("/chunk/0/0").json()["assets"].values())
     generated = c.post("/generate", json={"biome": "forest", "subject": "rock", "size": 64, "seed": 2}).json()
     ids.append(generated["id"])
+    gen.started.clear()
+    gen.gate.clear()
+    busy = threading.Thread(target=lambda: c.get("/chunk/1/1"))  # a chunk is generating on a runner slot
+    busy.start()
+    assert gen.started.wait(timeout=10)
     codes: list[int] = []
     fetch = threading.Thread(target=lambda: codes.extend(c.get(f"/asset/{i}.png").status_code for i in ids))
-    with app.state.bridge.lock:  # a chunk is generating: world calls wait, PNGs of announced assets must not
-        fetch.start()
-        fetch.join(timeout=5)
-        assert not fetch.is_alive(), "GET /asset waited for the generator lock"
+    fetch.start()
+    fetch.join(timeout=5)
+    waited = fetch.is_alive()
+    gen.gate.set()
+    busy.join(timeout=30)
+    world.runner.close()
+    assert not waited, "GET /asset waited for the generation"
     assert codes == [200] * len(ids)
+
+
+def test_player_returns_at_once_while_a_chunk_is_generating(gated_generator):
+    gen = gated_generator
+    world = _world(gen)
+    c = TestClient(create_app(world))
+    assert c.get("/chunk/0/0").status_code == 200
+    gen.started.clear()
+    gen.gate.clear()
+    busy = threading.Thread(target=lambda: c.get("/chunk/1/0"))
+    busy.start()
+    assert gen.started.wait(timeout=10), "the player's chunk is generating on a runner slot"
+    start = time.perf_counter()
+    r = c.post("/player", json={"x": 4.0, "y": 4.0})
+    elapsed = time.perf_counter() - start
+    gen.gate.set()
+    busy.join(timeout=30)
+    world.runner.close()
+    assert r.status_code == 200 and r.json() == {"prewarmed": []}, "scheduled, not generated"
+    assert elapsed < 0.2, f"/player took {elapsed:.3f} s while a chunk generated"
+    assert c.get("/stats").json()["chunks"] >= 3, "the player's chunk and the prewarm both finished"
 
 
 def test_chunks_lists_every_resident_chunk():

@@ -20,7 +20,7 @@ from realmweaver.config import settings
 from realmweaver.layout import render, solve, tileset_from_example
 from realmweaver.metrics import histogram_embed, tileability
 from realmweaver.types import AssetSpec, Chunk, Generator, TexturePayload
-from realmweaver.world import World
+from realmweaver.world import ThreadRunner, World
 
 log = logging.getLogger(__name__)
 
@@ -115,7 +115,9 @@ def _serve(args: argparse.Namespace) -> int:
     from realmweaver.bridge import create_app
 
     generator, embed = _adapters("procedural" if args.procedural else "auto", embed=True)
-    world = World(args.biome, generator, embed, chunk_size=settings().chunk_size)
+    slots = 2 if isinstance(generator, ProceduralGenerator) else 1  # one diffusion pipeline, one thread
+    runner = ThreadRunner(slots)  # the bridge serves while the world generates on its own slots
+    world = World(args.biome, generator, embed, chunk_size=settings().chunk_size, runner=runner)
     uvicorn.run(create_app(world=world, generator=generator), host=args.host, port=args.port)
     return 0
 

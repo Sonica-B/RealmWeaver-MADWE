@@ -1,11 +1,16 @@
 """The `World` seam: chunks with assets, borders, persistence and prewarm on the CPU adapters."""
 
+import threading
+import time
+
 import numpy as np
 import pytest
 
 from realmweaver.assets import ProceduralGenerator
 from realmweaver.layout import violations
-from realmweaver.world import World
+from realmweaver.world import InlineRunner, ThreadRunner, World
+
+Key = tuple[int, int]
 
 
 @pytest.fixture(autouse=True)
@@ -269,3 +274,102 @@ def test_tick_refines_the_nearest_draft_chunks_once_nothing_is_left_to_prewarm(s
     assert w.graph.chunk(*refined[1]).state == "ready" and len(w.tick(budget=10)) == 7 and w.tick() == []
     assert w.stats()["refined"] == 9 and w.stats()["chunks"] == 9 and w.graph.validate() == []
     assert all(c.state == "ready" for c in w.graph.chunks.values())
+
+
+# --- candidate 5: the in-flight model lives in World, behind the runner seam ------------------------------
+
+
+class _Overlap:
+    """`Generator` adapter over the procedural one that records how many `generate` calls overlap."""
+
+    def __init__(self, delay_s: float) -> None:
+        self.inner, self.delay_s, self.active, self.peak = ProceduralGenerator(), delay_s, 0, 0
+        self._lock = threading.Lock()
+
+    def generate(self, spec):
+        with self._lock:
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+        try:
+            time.sleep(self.delay_s)
+            return self.inner.generate(spec)
+        finally:
+            with self._lock:
+                self.active -= 1
+
+
+class _Failing:
+    def generate(self, spec):
+        raise RuntimeError("no model for this kind")
+
+
+def test_thread_runner_keeps_at_most_slots_generations_in_flight(small_assets):
+    gen = _Overlap(delay_s=0.02)
+    w = World("forest", gen, chunk_size=8, seed=16, runner=ThreadRunner(slots=2))
+    assert w.scheduler.max_in_flight == w.runner.slots == 2
+    handles = [w.submit(cx, 0) for cx in range(5)]
+    results = [h.result(timeout=30) for h in handles]
+    w.runner.close()
+    assert gen.peak == 2, "two slots: the generator ran on two threads at once, never on three"
+    assert all(r.transition == "created" for r in results) and w.stats()["chunks"] == 5
+    assert w.stats()["in_flight"] == 0 and w.graph.validate() == []
+
+
+def test_player_requests_pre_empt_queued_prewarm(small_assets, gated_generator):
+    gen = gated_generator
+    w = World("forest", gen, chunk_size=8, seed=17, runner=ThreadRunner(slots=1))
+    order: list[Key] = []
+    w.on_ready(lambda result: order.append(result.chunk.key))
+    gen.gate.clear()
+    first = w.submit(2, 0, priority="prewarm")
+    assert gen.started.wait(timeout=10), "the one slot is busy with the first prewarm"
+    queued = [w.submit(cx, 0, priority="prewarm") for cx in (3, 4)]
+    player = w.submit(0, 5, priority="player")
+    assert not player.done() and w.submit(0, 5) is player, "one job per key, whoever asks for it"
+    gen.gate.set()
+    for handle in [first, *queued, player]:
+        assert handle.result(timeout=30).transition == "created"
+    w.runner.close()
+    assert order == [(2, 0), (0, 5), (3, 0), (4, 0)], "the player's chunk ran before the queued prewarm"
+
+
+def test_tick_hands_prewarm_to_the_runner_and_reports_it_once_done(small_assets, gated_generator):
+    gen = gated_generator
+    w = World("forest", gen, chunk_size=8, seed=18, runner=ThreadRunner(slots=2))
+    w.request_chunk(0, 0)  # synchronous through the runner: returns once its worker is done
+    for x in range(7):
+        w.observe_player(float(x), 4.0)  # walking east inside chunk (0, 0)
+    gen.gate.clear()
+    assert w.tick(budget=3) == [], "scheduled, not generated: nothing has finished yet"
+    assert w.stats()["in_flight"] == 2, "max_in_flight is the runner's slot count, and it holds"
+    gen.gate.set()
+    warmed: list[Key] = []
+    deadline = time.monotonic() + 30
+    while len(warmed) < 3 and time.monotonic() < deadline:
+        time.sleep(0.01)
+        warmed += w.tick(budget=1)
+    w.runner.close()
+    assert (1, 0) in warmed[:2] and len(set(warmed)) == len(warmed) >= 3
+    assert all(w.graph.chunk(*k) is not None for k in warmed) and w.graph.validate() == []
+    assert w.stats()["in_flight"] == 0 and w.stats()["chunks"] >= 1 + len(warmed)
+
+
+def test_inline_runner_is_the_synchronous_default(small_assets):
+    w = World("forest", ProceduralGenerator(), chunk_size=8, seed=19)
+    assert isinstance(w.runner, InlineRunner) and w.runner.slots == w.scheduler.max_in_flight == 1
+    seen: list[tuple[Key, str]] = []
+    w.on_ready(lambda result: seen.append((result.chunk.key, result.transition)))
+    handle = w.submit(0, 0)
+    assert (
+        handle.done() and handle.result().transition == "created" and w.chunk(0, 0) is handle.result().chunk
+    )
+    assert w.submit(0, 0, priority="prewarm").result().transition == "reused"
+    assert w.request_chunk(0, 0, tier="refine").transition == "refined"
+    w.observe_player(4.0, 4.0)
+    warmed = w.tick(budget=1)
+    assert len(warmed) == 1 and seen == [((0, 0), "created"), ((0, 0), "refined"), (warmed[0], "created")]
+    assert w.stats()["in_flight"] == 0
+    broken = World("forest", _Failing(), chunk_size=8, seed=19)
+    with pytest.raises(RuntimeError, match="no model"):
+        broken.request_chunk(0, 0)
+    assert broken.chunk(0, 0) is None and broken.stats()["chunks"] == 0 and broken.stats()["in_flight"] == 0
