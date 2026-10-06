@@ -39,7 +39,7 @@ namespace RealmWeaver.Client
     {
         public string type;
         public int[] chunk;         // [cx, cy]
-        public List<KV> assets;     // tile class -> asset id
+        public List<KV> assetList;  // tile class -> asset id (flat twin of the bridge's assets object)
     }
 
     /// <summary>Talks HTTP to the Python bridge (`uv run realmweaver serve`). One per scene; the others hold a reference.</summary>

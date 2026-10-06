@@ -19,7 +19,12 @@ FIXTURE = ROOT / "tests" / "fixtures" / "chunk_example.json"
 CHUNK_KEYS = {"cx", "cy", "size", "biome", "state", "classes", "tilesFlat", "assetList", "prefabList"}
 
 # The WS /events "ready" message documented in the client README; the chunk fixture carries no event.
-READY_EVENT_EXAMPLE = {"type": "ready", "chunk": [0, 0], "assets": [{"k": "grass", "v": "b47d7ceb24ef4926"}]}
+READY_EVENT_EXAMPLE = {
+    "type": "ready",
+    "chunk": [0, 0],
+    "assets": {"grass": "b47d7ceb24ef4926"},
+    "assetList": [{"k": "grass", "v": "b47d7ceb24ef4926"}],
+}
 
 # Line comments are stripped first; DTO bodies then hold only fields (no braces), so matching to the first '}' is exact.
 COMMENT_RE = re.compile(r"//[^\n]*")
@@ -69,7 +74,7 @@ def test_kv_fields_match_list_items(dtos: dict[str, dict[str, str]], chunk: dict
 
 def test_ready_event_fields(dtos: dict[str, dict[str, str]]) -> None:
     assert set(dtos["ReadyEvent"]) <= set(READY_EVENT_EXAMPLE)
-    assert all(set(a) == set(dtos["KV"]) for a in READY_EVENT_EXAMPLE["assets"])
+    assert all(set(a) == set(dtos["KV"]) for a in READY_EVENT_EXAMPLE["assetList"])
 
 
 def test_fixture_is_internally_consistent(chunk: dict) -> None:

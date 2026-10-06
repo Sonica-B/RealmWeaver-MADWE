@@ -48,7 +48,7 @@ Caveats: the FID/KID reference set is the repo's own 240 SDXL-Turbo textures und
 
 ```bash
 uv sync --extra dev                      # Python >= 3.11; CUDA torch on Windows, CPU torch on Linux CI
-uv run realmweaver generate --biome forest --tile grass --out grass.png   # ~0.4 s on an RTX 5070 Ti, procedural fallback without CUDA
+uv run realmweaver generate --biome forest --tile grass --out grass.png   # GPU draft tier; procedural fallback without CUDA (timings: table above)
 uv run realmweaver layout --biome desert --size 32 --seed 7 --out desert.png
 uv run realmweaver world --biome snow --chunks 3 --out snow_world.png
 uv run realmweaver serve                 # http://127.0.0.1:8008 operator page + API

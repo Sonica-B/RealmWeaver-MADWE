@@ -65,7 +65,7 @@ chunk first, and `ready` events (or the poll) refresh chunks whose assets finish
 | `tiles`, `assets`, `prefabs` | nested rows, objects | ignored: `JsonUtility` reads neither jagged arrays nor dictionaries; kept for other clients |
 
 `GET /asset/{id}.png` returns the PNG (`wrapMode = Repeat`). `POST /player` takes `{"x": <float>, "y": <float>}` in tile
-units. `WS /events` sends `{"type": "hello"}` on connect, then `{"type": "ready", "chunk": [cx, cy], "assets": [{"k", "v"}]}`;
+units. `WS /events` sends `{"type": "hello"}` on connect, then `{"type": "ready", "chunk": [cx, cy], "assets": {cls: id}, "assetList": [{"k", "v"}]}`;
 the client acts on `type` and `chunk` only and re-fetches the chunk.
 
 `tests/test_unity_protocol.py` parses the `[Serializable]` DTOs in `RealmWeaverClient.cs` and asserts every field is a
