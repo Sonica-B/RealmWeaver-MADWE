@@ -139,13 +139,13 @@ class Bridge:
 
     def chunk(self, cx: int, cy: int, tier: Tier) -> tuple[dict[str, Any], Event | None]:
         with self.lock:
-            state = getattr(self.world.graph.chunk(cx, cy), "state", None)
-            chunk = self.world.request_chunk(cx, cy, tier)
-            result = chunk_json(chunk), ready_event(chunk) if chunk.state != state else None
+            result = self.world.request_chunk(cx, cy, tier)
+            chunk = result.chunk
+            response = chunk_json(chunk), ready_event(chunk) if result.transition != "reused" else None
             assets = self._unencoded([chunk])
         for asset in assets:
             self._encode(asset)
-        return result
+        return response
 
     def prewarm(self, positions: list[Position]) -> tuple[list[Key], list[Event]]:
         """One prewarm step: observe the queued positions, then generate at most one predicted chunk."""
@@ -153,7 +153,7 @@ class Bridge:
             for x, y in positions:
                 self.world.observe_player(x, y)
             warmed = self.world.tick(1)
-            chunks = [c for key in warmed if (c := self.world.graph.chunk(*key)) is not None]
+            chunks = [c for key in warmed if (c := self.world.chunk(*key)) is not None]
             events, assets = [ready_event(c) for c in chunks], self._unencoded(chunks)
         for asset in assets:
             self._encode(asset)
@@ -170,9 +170,9 @@ class Bridge:
         seam = tileability(payload.image) if isinstance(payload, ImagePayload) else None
         return {"id": asset.id, "latency_s": asset.latency_s, "tileability": seam}
 
-    def chunks(self) -> list[dict[str, Any]]:  # every chunk resident in the world state graph
+    def chunks(self) -> list[dict[str, Any]]:  # every chunk resident in the world
         with self.lock:
-            resident = list(self.world.graph.chunks.values()) if self.loaded else []
+            resident = self.world.chunks() if self.loaded else []
         return [{"cx": c.cx, "cy": c.cy, "state": c.state, "biome": c.biome} for c in resident]
 
     def stats(self) -> dict[str, Any]:  # empty until the first generation builds the world

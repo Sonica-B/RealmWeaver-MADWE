@@ -16,7 +16,7 @@ def _run_in_tmp(tmp_path, monkeypatch):
 
 def test_request_chunk_maps_every_tile_class_to_an_asset():
     w = World("forest", ProceduralGenerator(), chunk_size=8, seed=1)
-    c = w.request_chunk(0, 0)
+    c = w.request_chunk(0, 0).chunk
     classes = {c.layout.class_at(x, y) for x in range(8) for y in range(8)}
     assert classes <= set(c.asset_ids) and violations(c.layout) == 0 and c.state == "draft"
     assert all(w.asset(i).image.shape[:2] == (512, 512) for i in c.asset_ids.values())
@@ -27,8 +27,8 @@ def test_neighbour_chunks_share_a_valid_border_and_graph_validates():
     w.request_chunk(0, 0)
     w.request_chunk(1, 0)
     assert w.graph.validate() == []
-    ts = w.request_chunk(0, 0).layout.tileset
-    a, b = w.request_chunk(0, 0).layout, w.request_chunk(1, 0).layout
+    ts = w.request_chunk(0, 0).chunk.layout.tileset
+    a, b = w.request_chunk(0, 0).chunk.layout, w.request_chunk(1, 0).chunk.layout
     assert all(ts.allowed[ts.index(a.class_at(7, y)), 1, ts.index(b.class_at(0, y))] for y in range(8))
 
 
@@ -37,7 +37,7 @@ def test_save_and_load_round_trip_is_identical():
     w.request_chunk(0, 0)
     w.save("tmp_world.json")
     w2 = World.load("tmp_world.json", ProceduralGenerator())
-    assert np.array_equal(w2.request_chunk(0, 0).layout.grid, w.request_chunk(0, 0).layout.grid)
+    assert np.array_equal(w2.request_chunk(0, 0).chunk.layout.grid, w.request_chunk(0, 0).chunk.layout.grid)
 
 
 def test_tick_prewarms_the_chunk_ahead_of_the_player():
@@ -62,30 +62,30 @@ def test_a_tiny_cache_evicts_far_chunks_from_graph_and_store(small_assets):
     w = World("forest", ProceduralGenerator(), chunk_size=8, seed=4, cache_bytes=1)
     w.observe_player(2.0, 2.0)
     w.request_chunk(0, 0)
-    far = w.request_chunk(5, 5)  # over the cap: the chunk farthest from the player goes at once
-    assert far.state == "draft" and w.graph.chunk(5, 5) is None and w.graph.chunk(0, 0) is not None
+    far = w.request_chunk(5, 5).chunk  # over the cap: the chunk farthest from the player goes at once
+    assert far.state == "draft" and w.graph.chunk(5, 5) is None and w.region("forest").chunks == {(0, 0)}
     s = w.stats()
     assert s["chunks"] == 1 and s["resident_assets"] == s["assets"] and w.graph.validate() == []
 
 
 def test_refine_tier_upgrades_a_draft_chunk_in_place(small_assets):
     w = World("forest", ProceduralGenerator(), chunk_size=8, seed=4)
-    draft = w.request_chunk(0, 0)
-    ready = w.request_chunk(0, 0, tier="refine")
+    draft = w.request_chunk(0, 0).chunk
+    ready = w.request_chunk(0, 0, tier="refine").chunk
     assert ready is draft and ready.state == "ready" and w.graph.validate() == []
-    assert w.request_chunk(0, 0, tier="refine") is ready and w.stats()["chunks"] == 1
+    assert w.request_chunk(0, 0, tier="refine").chunk is ready and w.stats()["chunks"] == 1
     assert all(w.asset(i).image.shape == (64, 64, 3) for i in ready.asset_ids.values())
 
 
 def test_assets_are_regenerated_from_their_specs_after_load(small_assets, tmp_path):
     w = World("forest", ProceduralGenerator(), chunk_size=8, seed=5)
-    c = w.request_chunk(0, 0)
+    c = w.request_chunk(0, 0).chunk
     w.save(tmp_path / "world.json")
     w2 = World.load(tmp_path / "world.json", ProceduralGenerator())
     assert w2.stats()["resident_assets"] == 0 and w2.stats()["chunks"] == 1 and w2.graph.validate() == []
     asset_id = next(iter(c.asset_ids.values()))
     assert np.array_equal(w2.asset(asset_id).image, w.asset(asset_id).image)
-    assert w2.stats()["resident_assets"] == 1 and w2.request_chunk(0, 0).asset_ids == c.asset_ids
+    assert w2.stats()["resident_assets"] == 1 and w2.request_chunk(0, 0).chunk.asset_ids == c.asset_ids
 
 
 def test_unknown_asset_or_biome_raises_key_error(small_assets):
@@ -97,9 +97,9 @@ def test_unknown_asset_or_biome_raises_key_error(small_assets):
 
 
 def test_same_seed_reproduces_the_world_and_another_seed_differs(small_assets):
-    a = World("forest", ProceduralGenerator(), chunk_size=8, seed=11).request_chunk(0, 0)
-    b = World("forest", ProceduralGenerator(), chunk_size=8, seed=11).request_chunk(0, 0)
-    c = World("forest", ProceduralGenerator(), chunk_size=8, seed=12).request_chunk(0, 0)
+    a = World("forest", ProceduralGenerator(), chunk_size=8, seed=11).request_chunk(0, 0).chunk
+    b = World("forest", ProceduralGenerator(), chunk_size=8, seed=11).request_chunk(0, 0).chunk
+    c = World("forest", ProceduralGenerator(), chunk_size=8, seed=12).request_chunk(0, 0).chunk
     assert np.array_equal(a.layout.grid, b.layout.grid) and a.asset_ids == b.asset_ids
     assert not np.array_equal(a.layout.grid, c.layout.grid) and a.asset_ids != c.asset_ids
 
@@ -116,7 +116,7 @@ def test_observe_player_counts_prewarm_hits_and_misses(small_assets):
 def test_stats_reports_counts_bytes_and_latencies(small_assets):
     w = World("forest", ProceduralGenerator(), chunk_size=8, seed=7)
     assert w.tick() == [] and w.stats()["chunk_latency_s"] == {"n": 0}
-    c = w.request_chunk(0, 0)
+    c = w.request_chunk(0, 0).chunk
     s = w.stats()
     keys = {"chunks", "assets", "cache_bytes", "prewarm_hits", "prewarm_misses", "regenerations", "fallbacks"}
     assert keys <= set(s) and s["chunks"] == 1 and s["seam_violations"] == 0
@@ -137,10 +137,39 @@ def test_chunk_solved_against_four_neighbours_is_the_same_object_on_every_reques
     w = World("forest", ProceduralGenerator(), chunk_size=8, seed=9)
     for key in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
         w.request_chunk(*key)
-    mid = w.request_chunk(0, 0)
-    assert mid is w.request_chunk(0, 0) and set(w.graph.neighbours(0, 0)) == {"N", "E", "S", "W"}
+    mid = w.request_chunk(0, 0).chunk
+    assert mid is w.request_chunk(0, 0).chunk and set(w.graph.neighbours(0, 0)) == {"N", "E", "S", "W"}
     # diagonal neighbours are never constrained against each other, so a corner may keep one mismatch
     assert w.stats()["seam_violations"] <= 4 and w.graph.validate() == []
+
+
+def test_request_chunk_reports_the_transition_it_caused(small_assets):
+    w = World("forest", ProceduralGenerator(), chunk_size=8, seed=14)
+    first = w.request_chunk(0, 0)
+    assert first.transition == "created" and first.chunk.state == "draft"
+    again = w.request_chunk(0, 0)
+    assert again.transition == "reused" and again.chunk is first.chunk
+    refined = w.request_chunk(0, 0, tier="refine")
+    assert refined.transition == "refined" and refined.chunk is first.chunk and first.chunk.state == "ready"
+    assert w.request_chunk(0, 0, tier="refine").transition == "reused", "a ready chunk has nothing to refine"
+    assert w.request_chunk(1, 0, tier="refine").transition == "created", "absent: created straight to ready"
+
+
+def test_region_map_names_the_biome_and_the_chunks_it_holds(small_assets):
+    w = World("forest", ProceduralGenerator(), chunk_size=8, seed=15)
+    empty = w.region("forest")
+    assert (empty.biome, empty.chunks) == ("forest", frozenset()) and empty.id
+    with pytest.raises(KeyError):
+        w.region("tundra")
+    for key in [(0, 0), (1, 0), (0, -1)]:
+        w.request_chunk(*key)
+    region = w.region("forest")
+    assert region.chunks == {(0, 0), (1, 0), (0, -1)} and region.id == empty.id
+    assert w.chunk(1, 0) is w.request_chunk(1, 0).chunk and w.chunk(9, 9) is None
+    assert {c.key for c in w.chunks()} == region.chunks
+    w.save("tmp_world.json")
+    loaded = World.load("tmp_world.json", ProceduralGenerator()).region("forest")
+    assert (loaded.id, loaded.chunks) == (region.id, region.chunks), "the id is stable across save and load"
 
 
 # --- story 12: drift, regeneration with the next seed, anchor fallback -----------------------------------
@@ -188,7 +217,7 @@ def _embed_by_attempt(gen: _Attempts, cosines: tuple[float, ...]):
 def test_below_threshold_asset_is_regenerated_with_the_next_seed_until_it_passes(small_assets):
     gen = _Attempts()
     w = World("forest", gen, _embed_by_attempt(gen, cosines=(0.0, 1.0)), chunk_size=8, seed=21)
-    c = w.request_chunk(0, 0)
+    c = w.request_chunk(0, 0).chunk
     present = {c.layout.class_at(x, y) for x in range(8) for y in range(8)}
     s = w.stats()
     assert s["regenerations"] == len(present) - 1 and s["fallbacks"] == 0  # the first asset sets the style
@@ -206,7 +235,7 @@ def test_when_every_attempt_fails_the_best_candidate_is_anchored_and_later_chunk
 ):
     gen = _Attempts()
     w = World("forest", gen, _embed_by_attempt(gen, cosines=(0.1, 0.3, 0.2)), chunk_size=8, seed=22)
-    first = w.request_chunk(0, 0)
+    first = w.request_chunk(0, 0).chunk
     present = {first.layout.class_at(x, y) for x in range(8) for y in range(8)}
     s = w.stats()
     assert s["fallbacks"] == len(present) - 1 and s["regenerations"] == 2 * (len(present) - 1)
@@ -215,7 +244,7 @@ def test_when_every_attempt_fails_the_best_candidate_is_anchored_and_later_chunk
         1:
     ]:  # three tries and no asset of the class in the region yet: the best try (0.3) stays
         assert len(run) == 3 and first.asset_ids[run[0].subject] == run[1].id
-    second = w.request_chunk(1, 0)
+    second = w.request_chunk(1, 0).chunk
     shared = set(second.asset_ids) & set(first.asset_ids)
     assert shared and w.graph.validate() == []
     for cls in shared:  # every try fails again, so the class is anchored to the region's best asset of it

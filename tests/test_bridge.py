@@ -168,6 +168,34 @@ def test_ws_ready_event_follows_a_direct_chunk_request():
         assert event["assets"] == j["assets"] and event["assetList"] == j["assetList"]
 
 
+def test_bridge_never_reads_the_world_state_graph(monkeypatch: pytest.MonkeyPatch):
+    """Ready events come from `request_chunk`'s transition, listings and prewarm from `World` reads: every
+    route still works while reading `graph`, which is for tests and the bench, raises."""
+
+    def forbidden(_world):
+        raise AssertionError("the bridge read world.graph")
+
+    monkeypatch.setattr(World, "graph", property(forbidden), raising=False)
+    with _client() as c, c.websocket_connect("/events") as ws:
+        assert ws.receive_json() == {"type": "hello"}
+        assert c.get("/chunk/0/0").json()["state"] == "draft"  # created: a ready event
+        assert ws.receive_json()["chunk"] == [0, 0]
+        assert c.get("/chunk/0/0?tier=refine").json()["state"] == "ready"  # refined: another
+        assert ws.receive_json()["chunk"] == [0, 0]
+        assert c.get("/chunk/0/0").json()["state"] == "ready"  # reused: none, so the next event is (1, 0)'s
+        assert c.get("/chunk/1/0").json()["state"] == "draft"
+        assert ws.receive_json()["chunk"] == [1, 0]
+        assert {(j["cx"], j["cy"]) for j in c.get("/chunks").json()} == {(0, 0), (1, 0)}
+        warmed: list[list[int]] = []
+        for x in range(0, 40, 2):
+            warmed += c.post("/player", json={"x": x, "y": 4}).json()["prewarmed"]
+        deadline = time.monotonic() + 5
+        while not warmed and time.monotonic() < deadline:
+            time.sleep(0.05)
+            warmed += c.post("/player", json={"x": 38, "y": 4}).json()["prewarmed"]
+        assert warmed, "prewarm failed: it logs instead of raising"
+
+
 def test_player_response_lists_prewarmed_chunks_that_then_exist():
     with _client() as c:
         c.get("/chunk/0/0")

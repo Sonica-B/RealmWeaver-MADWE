@@ -103,7 +103,7 @@ def _world(args: argparse.Namespace) -> int:
         print(json.dumps(world.stats()))
     thumbs: dict[str, np.ndarray] = {}
     side = range(args.chunks)
-    rows = [[_chunk_image(world, world.request_chunk(cx, cy), thumbs) for cx in side] for cy in side]
+    rows = [[_chunk_image(world, world.request_chunk(cx, cy).chunk, thumbs) for cx in side] for cy in side]
     image = np.concatenate([np.concatenate(row, axis=1) for row in rows])
     print(_save(args.out, TexturePayload(image).encode()[0]))
     return 0

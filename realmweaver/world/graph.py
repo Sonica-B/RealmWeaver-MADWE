@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import logging
 from collections import Counter
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Literal
 
 import networkx as nx
@@ -25,6 +25,17 @@ WORLD = "world"
 _PARENT_KIND = {"Region": "World", "Chunk": "Region", "Tile": "Chunk"}
 _EPS = 1e-9
 ChunkState = Literal["pending", "draft", "ready"]
+
+
+@dataclass(frozen=True)
+class Region:
+    """A contiguous set of chunks sharing one biome (the glossary's Region) as a read record: `id` is the
+    Region node's id, stable across save and load; `chunks` the keys of the chunks it CONTAINS."""
+
+    id: str
+    name: str
+    biome: str
+    chunks: frozenset[tuple[int, int]]
 
 
 def _cos(a: np.ndarray, b: np.ndarray) -> float:
@@ -159,6 +170,19 @@ class WorldStateGraph:
 
     def chunk(self, cx: int, cy: int) -> Chunk | None:
         return self.chunks.get((cx, cy))
+
+    def region(self, name: str) -> Region:
+        """The region record for `name`; KeyError when the graph holds no such region."""
+        rnode = _region_node(name)
+        if rnode not in self.g:
+            raise KeyError(f"unknown region {name!r}")
+        nodes = self.g.nodes
+        keys = (
+            (nodes[v]["cx"], nodes[v]["cy"])
+            for _, v, k in self.g.out_edges(rnode, keys=True)
+            if k == "CONTAINS"
+        )
+        return Region(rnode, name, nodes[rnode]["biome"], frozenset(keys))
 
     def neighbours(self, cx: int, cy: int) -> dict[str, Chunk]:
         """Chunks present on each side, keyed `"N"`, `"E"`, `"S"`, `"W"` as `solve_chunk` names its neighbours."""
