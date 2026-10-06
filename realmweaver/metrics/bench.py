@@ -189,10 +189,10 @@ def run_bench(
         # include those weights (subtract resident_bytes). Separate processes per arm would be cleaner.
         allocator = _allocator_ab(make_generator, specs)
     embed = embed or histogram_embed
-    images = [a.image for a in assets]
+    images = [a.payload.image for a in assets]  # the bench measures textures: seams and style need the pixels
     ratios = [tileability(img) for img in images]
     share = float(np.mean([r <= _TILEABLE_MAX for r in ratios]))
-    groups = {b: [embed(a.image) for a in assets if a.spec.biome == b] for b in biomes}
+    groups = {b: [embed(a.payload.image) for a in assets if a.spec.biome == b] for b in biomes}
     vecs = {b: np.stack(v) for b, v in groups.items() if v}
     fid_kid = kid_fid(REFERENCE_DIR, images, n=len(images), seed=seed) if with_fid else None
     notes = [

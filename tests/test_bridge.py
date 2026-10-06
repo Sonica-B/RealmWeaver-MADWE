@@ -127,6 +127,21 @@ def test_generate_sprite_keeps_alpha_and_reports_measurements():
     assert png.mode == "RGBA" and np.asarray(png).shape == (64, 64, 4)
 
 
+def test_generate_mesh_then_fetch_glb():
+    c = _client()
+    body = {"biome": "forest", "kind": "mesh", "subject": "rock", "size": 16, "seed": 1}
+    r = c.post("/generate", json=body)
+    assert r.status_code == 200
+    j = r.json()
+    assert set(j) == {"id", "latency_s", "tileability"} and j["tileability"] is None, "no seams on a mesh"
+    glb = c.get(f"/asset/{j['id']}.glb")
+    assert glb.status_code == 200 and glb.headers["content-type"] == "model/gltf-binary"
+    assert (
+        glb.headers["cache-control"] == "public, max-age=31536000, immutable" and glb.content[:4] == b"glTF"
+    )
+    assert c.get(f"/asset/{j['id']}.png").status_code == 404, "a mesh has no PNG representation"
+
+
 def test_generate_is_content_addressed_and_validated():
     c = _client()
     body = {"biome": "forest", "subject": "grass", "size": 64, "seed": 1}

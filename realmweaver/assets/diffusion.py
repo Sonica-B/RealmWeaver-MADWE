@@ -18,7 +18,7 @@ from realmweaver.assets.seamless import set_seamless
 from realmweaver.biomes import Biome, load_biome
 from realmweaver.config import Settings
 from realmweaver.config import settings as load_settings
-from realmweaver.types import Asset, AssetSpec, Generator, Tier
+from realmweaver.types import Asset, AssetSpec, Generator, SpritePayload, TexturePayload, Tier
 
 log = logging.getLogger(__name__)
 
@@ -156,6 +156,11 @@ class DiffusionGenerator(Generator):
 
     def generate(self, spec: AssetSpec) -> Asset:
         t0 = time.perf_counter()
+        if spec.kind not in ("texture", "sprite"):
+            raise RuntimeError(
+                f"DiffusionGenerator makes textures and sprites, not {spec.kind}; a {spec.kind} needs a mesh or "
+                "motion model behind the Generator seam"
+            )
         biome = load_biome(spec.biome)
         guidance, min_steps = _TIERS[spec.tier]
         self._cfg = guidance > 1.0
@@ -189,10 +194,10 @@ class DiffusionGenerator(Generator):
         if spec.kind == "sprite":
             from realmweaver.assets.alpha import alpha_from_white
 
-            image = alpha_from_white(rgb)
+            payload: TexturePayload | SpritePayload = SpritePayload(alpha_from_white(rgb))
         else:
-            image = rgb
-        return Asset(spec=spec, image=image, latency_s=time.perf_counter() - t0)
+            payload = TexturePayload(rgb)
+        return Asset(spec=spec, payload=payload, latency_s=time.perf_counter() - t0)
 
     def warmup(self, biome: str) -> None:
         """Load the biome LoRA, cache prompt embeds for every tile class and prop in both tiers, and run one asset

@@ -13,9 +13,10 @@ Domain language for RealmWeaver (MADWE). Code, tests, specs and ADRs use these w
 | **Chunk** | A fixed-size square of tiles (default 16×16) addressed by integer chunk coordinates `(cx, cy)`. The unit of generation, caching, prediction and streaming. |
 | **Border constraint** | Tile classes fixed along a chunk edge so it matches an already-solved neighbour chunk. |
 | **Contradiction** | A WFC state where some cell has no allowed tile class left. Handled by restart with a new seed, then by shrinking the problem. |
-| **Asset** | One generated image: a seamless texture for a tile class or a sprite for a prop. Identified by a content id derived from its asset spec. |
-| **Asset spec** | The complete request for one asset: biome, tile class or prompt, kind (texture / sprite), size, seed, steps, seamless flag, quality tier. |
-| **Generator** | The module that turns an asset spec into pixels. Two adapters sit at this seam: the diffusion generator (GPU) and the procedural generator (CPU fallback, used by tests). |
+| **Asset** | One generated asset carrying the payload of its kind: a seamless texture for a tile class, a sprite for a prop, a mesh or an animation clip. Identified by a content id derived from its asset spec. |
+| **Asset spec** | The complete request for one asset: biome, tile class or prompt, kind (texture / sprite / mesh / animation), size, seed, steps, seamless flag, quality tier. |
+| **Payload** | The kind-typed content of an asset: texture or sprite pixels, a mesh's GLB bytes with its textures, an animation's clip bytes. It encodes itself (bytes plus media type: PNG or GLB) and renders a preview thumbnail; consumers ask the payload, never the pixels. |
+| **Generator** | The module that turns an asset spec into an asset of its kind. Two adapters sit at this seam: the diffusion generator (GPU) and the procedural generator (CPU fallback, used by tests). |
 | **Quality tier** | `draft` (few-step, used for prewarm) or `refine` (more steps, replaces draft when idle). Steps are the anytime knob. |
 | **Seamless** | A texture whose left/right and top/bottom edges continue each other. Produced with circular padding in the generator's convolutions. |
 | **Tileability** | Measured seam quality: ratio of wrapped-edge gradient to interior gradient, 1.0 = edge indistinguishable from interior. Reported per asset and as a percentage of assets above threshold. |
@@ -28,6 +29,6 @@ Domain language for RealmWeaver (MADWE). Code, tests, specs and ADRs use these w
 | **Predictor** | Order-2 Markov model over eight quantised headings that ranks neighbour chunks by visit probability, falling back to order-1 then constant velocity. |
 | **Scheduler** | The queue that orders chunk requests by priority = visit probability / cost, keeps at most two generations in flight, and evicts from the byte-capped LRU cache. |
 | **Memory pool** | Pre-allocated latent, noise and embedding buffers reused across generations, with resident weights, so the allocator makes zero new device allocations per image. |
-| **Bridge** | The FastAPI service Unity talks to: HTTP for PNG assets and chunk JSON, WebSocket for player position and ready events. |
+| **Bridge** | The FastAPI service Unity talks to: HTTP for encoded assets (PNG, GLB) and chunk JSON, WebSocket for player position and ready events. |
 | **Prefab map** | The table from tile class to Unity prefab, shipped as a ScriptableObject on the Unity side and as JSON on the bridge side. |
 | **Benchmark report** | A JSON file under `reports/` with seeds, counts, versions and every metric the README or dashboard shows. |

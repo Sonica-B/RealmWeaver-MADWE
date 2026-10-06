@@ -187,7 +187,7 @@ class World:
         asset = self._assets.get(spec.id)
         if asset is None:
             asset = self.generator.generate(spec)
-            asset.style_vec = self.embed(asset.image)
+            asset.style_vec = self.embed(asset.preview(asset.spec.size))
         return asset
 
     def _assign_assets(self, chunk: Chunk, tier: Tier) -> None:

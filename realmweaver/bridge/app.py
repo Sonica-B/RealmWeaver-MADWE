@@ -1,32 +1,31 @@
-"""FastAPI routes over the `World` seam: PNG assets, chunk JSON, player position, benchmark report, WebSocket ready
-events and the operator page. Every call into the world or the generator runs in the threadpool under one lock (neither
-the world state graph nor the GPU adapter is thread-safe) so the event loop stays free while a chunk generates. PNGs
-are encoded once and served from a cache without that lock, and prewarm runs on one background task that yields to
-`/chunk` and `/generate` between chunks, so the player's own request never queues behind a prediction (story 24)."""
+"""FastAPI routes over the `World` seam: encoded assets (PNG textures and sprites, GLB meshes), chunk JSON, player
+position, benchmark report, WebSocket ready events and the operator page. Every call into the world or the generator
+runs in the threadpool under one lock (neither the world state graph nor the GPU adapter is thread-safe) so the event
+loop stays free while a chunk generates. Assets are encoded once and served from a cache without that lock, and
+prewarm runs on one background task that yields to `/chunk` and `/generate` between chunks, so the player's own
+request never queues behind a prediction (story 24)."""
 
 from __future__ import annotations
 
 import asyncio
-import io
 import logging
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
-from PIL import Image
 from pydantic import BaseModel, Field
 
 from realmweaver.biomes import biome_names, load_biome
 from realmweaver.config import settings
 from realmweaver.metrics import histogram_embed, tileability
 from realmweaver.metrics.bench import latest_report
-from realmweaver.types import Asset, AssetSpec, Chunk, Generator, Tier
+from realmweaver.types import Asset, AssetSpec, Chunk, Generator, ImagePayload, Kind, Tier
 from realmweaver.world import World
 
 log = logging.getLogger(__name__)
@@ -34,15 +33,15 @@ log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / "static"
 IMMUTABLE = "public, max-age=31536000, immutable"
 MAX_GENERATED = 256  # ponytail: /generate results kept resident, oldest out; the upgrade path is a byte cap like the world's
-MAX_PNGS = 512  # ponytail: encoded PNGs kept by count, oldest out; the upgrade path is a byte cap shared with the world's
+MAX_ENCODED = 512  # ponytail: encoded assets kept by count, oldest out; the upgrade path is a byte cap shared with the world's
 Event = dict[str, Any]
 Key = tuple[int, int]
 Position = tuple[float, float]
 
 
-class GenerateRequest(BaseModel):  # AssetSpec fields; `subject` is the tile class or the prop name
+class GenerateRequest(BaseModel):  # AssetSpec fields; `subject` is the tile class, the prop or the mesh name
     biome: str
-    kind: Literal["texture", "sprite"] = "texture"
+    kind: Kind = "texture"
     subject: str = ""
     size: int = Field(default=512, ge=8, le=2048, multiple_of=8)
     seed: int = 0
@@ -97,8 +96,9 @@ def _adapters(
 
 class Bridge:
     """World, generator and subscribers behind the routes. The world is built on first use so `/health` answers
-    before a diffusion model loads. `lock` serialises every call into the world or the generator; `pngs` holds the
-    encoded bytes of every asset announced through chunk JSON, a ready event or `/generate`, served without it."""
+    before a diffusion model loads. `lock` serialises every call into the world or the generator; `encoded` holds
+    the bytes and media type of every asset announced through chunk JSON, a ready event or `/generate`, served
+    without it."""
 
     def __init__(self, world: World | None, generator: Generator | None) -> None:
         self._world, self._generator = world, world.generator if world else generator
@@ -107,7 +107,7 @@ class Bridge:
         self.lock = threading.Lock()
         self.listeners: set[asyncio.Queue[Event]] = set()
         self.generated: OrderedDict[str, Asset] = OrderedDict()
-        self.pngs: OrderedDict[str, bytes] = OrderedDict()
+        self.encoded: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
         # Event-loop-only state: `priority` counts /chunk and /generate calls in flight, `positions` holds player
         # positions the prewarm task has not observed yet, `prewarmed` what it prewarmed since the last /player.
         self.priority = 0
@@ -144,7 +144,7 @@ class Bridge:
             result = chunk_json(chunk), ready_event(chunk) if chunk.state != state else None
             assets = self._unencoded([chunk])
         for asset in assets:
-            self._png(asset)
+            self._encode(asset)
         return result
 
     def prewarm(self, positions: list[Position]) -> tuple[list[Key], list[Event]]:
@@ -156,7 +156,7 @@ class Bridge:
             chunks = [c for key in warmed if (c := self.world.graph.chunk(*key)) is not None]
             events, assets = [ready_event(c) for c in chunks], self._unencoded(chunks)
         for asset in assets:
-            self._png(asset)
+            self._encode(asset)
         return warmed, events
 
     def generate(self, spec: AssetSpec) -> dict[str, Any]:
@@ -166,7 +166,9 @@ class Bridge:
             self.generated.move_to_end(spec.id)
             while len(self.generated) > MAX_GENERATED:
                 self.generated.popitem(last=False)
-        return {"id": asset.id, "latency_s": asset.latency_s, "tileability": tileability(asset.image)}
+        payload = asset.payload  # seams are a property of pixels; a mesh or a clip reports none
+        seam = tileability(payload.image) if isinstance(payload, ImagePayload) else None
+        return {"id": asset.id, "latency_s": asset.latency_s, "tileability": seam}
 
     def chunks(self) -> list[dict[str, Any]]:  # every chunk resident in the world state graph
         with self.lock:
@@ -178,37 +180,40 @@ class Bridge:
             return self.world.stats() if self.loaded else {}
 
     def _unencoded(self, chunks: list[Chunk]) -> list[Asset]:
-        """Under the lock: the chunks' assets without a cached PNG; resident after `request_chunk`, so dict lookups."""
-        return [self.world.asset(i) for c in chunks for i in c.asset_ids.values() if i not in self.pngs]
+        """Under the lock: the chunks' assets without a cached encoding; resident after `request_chunk`, so dict
+        lookups."""
+        return [self.world.asset(i) for c in chunks for i in c.asset_ids.values() if i not in self.encoded]
 
-    # -- PNGs, no world lock --------------------------------------------------------------------------------
+    # -- encoded assets, no world lock ----------------------------------------------------------------------
 
-    def png(self, asset_id: str) -> bytes:
-        """The cached PNG, else one encoded now; the lock is taken only for an id this bridge never announced."""
-        data = self.pngs.get(asset_id)
-        if data is not None:
-            return data
-        asset = self.generated.get(asset_id)
-        if asset is None:
-            with self.lock:  # e.g. an id from a saved world, regenerated from its recorded spec
-                try:
-                    asset = self.world.asset(asset_id)
-                except KeyError:
-                    raise HTTPException(404, f"unknown asset {asset_id}") from None
-        return self._png(asset)
-
-    def _png(self, asset: Asset) -> bytes:
-        """Encode once into `pngs` (images never change) and serve from there, on whichever thread asks."""
-        data = self.pngs.get(asset.id)
-        if data is None:
-            # ponytail: PIL's default compression on the calling thread, which delays a fresh chunk's response by its
-            # assets' encode time; the upgrade path is encoding at a lower level or in the step that generated them.
-            buf = io.BytesIO()
-            Image.fromarray(asset.image).save(buf, format="PNG")
-            data = self.pngs[asset.id] = buf.getvalue()
-            while len(self.pngs) > MAX_PNGS:
-                self.pngs.popitem(last=False)
+    def asset_bytes(self, asset_id: str, media_type: str) -> bytes:
+        """The cached encoding, else one made now; the lock is taken only for an id this bridge never announced.
+        404 for an unknown id or an asset encoded as another media type (a mesh asked for as a PNG)."""
+        encoded = self.encoded.get(asset_id)
+        if encoded is None:
+            asset = self.generated.get(asset_id)
+            if asset is None:
+                with self.lock:  # e.g. an id from a saved world, regenerated from its recorded spec
+                    try:
+                        asset = self.world.asset(asset_id)
+                    except KeyError:
+                        raise HTTPException(404, f"unknown asset {asset_id}") from None
+            encoded = self._encode(asset)
+        data, actual = encoded
+        if actual != media_type:
+            raise HTTPException(404, f"asset {asset_id} is {actual}, not {media_type}")
         return data
+
+    def _encode(self, asset: Asset) -> tuple[bytes, str]:
+        """Encode once into `encoded` (assets never change) and serve from there, on whichever thread asks."""
+        encoded = self.encoded.get(asset.id)
+        if encoded is None:
+            # ponytail: encoding on the calling thread delays a fresh chunk's response by its assets' encode time;
+            # the upgrade path is encoding in the step that generated them.
+            encoded = self.encoded[asset.id] = asset.encode()
+            while len(self.encoded) > MAX_ENCODED:
+                self.encoded.popitem(last=False)
+        return encoded
 
     # -- event loop only ------------------------------------------------------------------------------------
 
@@ -283,10 +288,17 @@ def create_app(world: World | None = None, generator: Generator | None = None) -
             raise HTTPException(404, str(e)) from None
         return await bridge.first(bridge.generate, AssetSpec(**body.model_dump()))
 
+    async def asset(asset_id: str, media_type: str) -> Response:
+        data = await run_in_threadpool(bridge.asset_bytes, asset_id, media_type)
+        return Response(data, media_type=media_type, headers={"Cache-Control": IMMUTABLE})
+
     @app.get("/asset/{asset_id}.png")
-    async def asset(asset_id: str) -> Response:
-        data = await run_in_threadpool(bridge.png, asset_id)
-        return Response(data, media_type="image/png", headers={"Cache-Control": IMMUTABLE})
+    async def asset_png(asset_id: str) -> Response:
+        return await asset(asset_id, "image/png")
+
+    @app.get("/asset/{asset_id}.glb")
+    async def asset_glb(asset_id: str) -> Response:
+        return await asset(asset_id, "model/gltf-binary")
 
     @app.get("/chunk/{cx}/{cy}")
     async def chunk(cx: int, cy: int, tier: Tier = "draft") -> dict[str, Any]:

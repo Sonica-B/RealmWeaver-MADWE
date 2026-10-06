@@ -13,14 +13,13 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 
 from realmweaver.assets import ProceduralGenerator
 from realmweaver.biomes import biome_names, load_biome
 from realmweaver.config import settings
 from realmweaver.layout import render, solve, tileset_from_example
 from realmweaver.metrics import histogram_embed, tileability
-from realmweaver.types import AssetSpec, Chunk, Generator
+from realmweaver.types import AssetSpec, Chunk, Generator, TexturePayload
 from realmweaver.world import World
 
 log = logging.getLogger(__name__)
@@ -43,10 +42,10 @@ def _adapters(mode: str, embed: bool = False) -> tuple[Generator, Callable[[np.n
     return generator, DinoEmbedder() if embed else histogram_embed
 
 
-def _png(image: np.ndarray, path: Path) -> Path:
-    """Write a uint8 HxWx3|4 image as PNG; PIL only here, at the file edge."""
+def _save(path: Path, data: bytes) -> Path:
+    """Create the parent and write encoded bytes: the command's one file edge."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(image).save(path)
+    path.write_bytes(data)
     return path
 
 
@@ -56,8 +55,9 @@ def _generate(args: argparse.Namespace) -> int:
     steps, size, seamless = _STEPS[args.tier], args.size or settings().asset_size, kind == "texture"
     spec = AssetSpec(args.biome, kind, name, size, args.seed, steps, seamless, args.tier)
     asset = generator.generate(spec)
-    out = _png(asset.image, args.out or Path(f"{args.biome}_{name}.png"))
-    seam = f" tileability={tileability(asset.image):.3f}" if seamless else ""  # seams are a texture property
+    data, _ = asset.encode()
+    out = _save(args.out or Path(f"{args.biome}_{name}.png"), data)
+    seam = f" tileability={tileability(asset.payload.image):.3f}" if seamless else ""  # a texture property
     print(f"{out} id={asset.id} latency_s={asset.latency_s:.3f}{seam}")
     return 0
 
@@ -65,7 +65,8 @@ def _generate(args: argparse.Namespace) -> int:
 def _layout(args: argparse.Namespace) -> int:
     b = load_biome(args.biome)
     layout = solve(tileset_from_example(b.example_map, b.legend), args.size, args.size, args.seed)
-    print(_png(render(layout, {name: tile.palette[0] for name, tile in b.tiles.items()}), args.out))
+    image = render(layout, {name: tile.palette[0] for name, tile in b.tiles.items()})
+    print(_save(args.out, TexturePayload(image).encode()[0]))  # plain pixels through the one PNG encoder
     if args.json:
         args.json.write_text(json.dumps(layout.class_rows()), encoding="utf-8")
         print(args.json)
@@ -81,20 +82,11 @@ def _walk(steps: int, chunks: int, chunk_size: int) -> Iterator[tuple[float, flo
         yield x + 0.5, y + 0.5
 
 
-def _thumb(image: np.ndarray, px: int) -> np.ndarray:
-    """`px` x `px` RGB thumbnail of an asset: a box filter when its side is a multiple of `px`, else nearest."""
-    side, f = image.shape[0], image.shape[0] // px
-    if f and side == f * px:
-        return image[..., :3].reshape(px, f, px, f, 3).mean(axis=(1, 3)).round().astype(np.uint8)
-    idx = np.arange(px) * side // px
-    return image[idx][:, idx, :3]
-
-
 def _chunk_image(world: World, chunk: Chunk, thumbs: dict[str, np.ndarray]) -> np.ndarray:
     """One chunk drawn tile by tile from its assets, each downscaled once into `thumbs`."""
     px, ids = _TILE_PX, chunk.asset_ids
     for asset_id in set(ids.values()) - set(thumbs):
-        thumbs[asset_id] = _thumb(world.asset(asset_id).image, px)
+        thumbs[asset_id] = world.asset(asset_id).preview(px)
     blank = np.zeros((px, px, 3), np.uint8)  # for tile classes absent from this chunk
     tiles = np.stack([thumbs[ids[c]] if c in ids else blank for c in chunk.layout.tileset.classes])
     n = chunk.layout.grid.shape[0]
@@ -112,7 +104,8 @@ def _world(args: argparse.Namespace) -> int:
     thumbs: dict[str, np.ndarray] = {}
     side = range(args.chunks)
     rows = [[_chunk_image(world, world.request_chunk(cx, cy), thumbs) for cx in side] for cy in side]
-    print(_png(np.concatenate([np.concatenate(row, axis=1) for row in rows]), args.out))
+    image = np.concatenate([np.concatenate(row, axis=1) for row in rows])
+    print(_save(args.out, TexturePayload(image).encode()[0]))
     return 0
 
 
