@@ -60,6 +60,7 @@ Docker with GPU (WSL2 backend on Windows, NVIDIA Container Toolkit on Linux):
 ```bash
 docker compose build && docker compose up          # serves on :8008 with the GPU
 docker compose run --rm realmweaver pytest -q -m "not gpu"
+docker compose run --rm realmweaver realmweaver bench --n 10 --biomes forest   # GPU inside the container; see reports/bench-20261006-111729.json
 ```
 
 ## How it works
