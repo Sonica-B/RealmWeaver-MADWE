@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Architecture review for RealmWeaver-MADWE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "neutral",
+        securityLevel: "loose",
+        flowchart: { htmlLabels: true, curve: "basis", padding: 8 },
+        sequence: { mirrorActors: false, actorMargin: 60, messageMargin: 28 },
+      });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .mermaid svg { max-width: 100%; height: auto; }
+      .band { display: flex; align-items: center; padding: 0 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; line-height: 1.1; }
+      .mass { display: flex; flex-direction: column; justify-content: center; padding: 0.5rem 0.75rem; font-size: 0.72rem; line-height: 1.25; }
+      code { font-size: 0.9em; }
+      @media print { .mermaid svg { max-height: 360px; } }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+      <!-- ============================================================ header ============================================================ -->
+      <header class="space-y-4">
+        <p class="text-xs uppercase tracking-wider text-slate-500">Architecture review · deepening candidates</p>
+        <h1 class="font-serif text-4xl text-slate-900">RealmWeaver-MADWE</h1>
+        <p class="text-sm text-slate-600">
+          Branch <code>feat/mvp-2026</code> · 2026-10-06 · direction weighed: the 2D tile engine growing into an open-world 3D action RPG
+          (meshes, terrain, agentic NPCs, quests, combat). Hot spots from <code>git log</code>: <code>bridge/app.py</code>,
+          <code>world/world.py</code>, <code>assets/diffusion.py</code>, <code>assets/pool.py</code>, <code>metrics/bench.py</code>, <code>cli.py</code>.
+        </p>
+        <div class="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-600">
+          <span class="inline-flex items-center gap-2"><span class="inline-block h-3 w-5 border border-slate-500 bg-white"></span>solid box = module</span>
+          <span class="inline-flex items-center gap-2"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#475569" stroke-width="1.5" class="seam" /></svg>dashed line = seam</span>
+          <span class="inline-flex items-center gap-2"><svg width="28" height="8"><line x1="0" y1="4" x2="24" y2="4" stroke="#dc2626" stroke-width="2" /><polygon points="22,0 28,4 22,8" fill="#dc2626" /></svg>red arrow = leakage</span>
+          <span class="inline-flex items-center gap-2"><span class="inline-block h-3 w-5 border-2 border-slate-900 deep"></span>thick dark box = deep module</span>
+          <span class="inline-flex items-center gap-2"><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800">Strong</span><span class="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">Worth exploring</span><span class="rounded-full bg-slate-200 px-2 py-0.5 text-slate-700">Speculative</span></span>
+        </div>
+        <ol class="grid gap-x-6 gap-y-1 text-sm text-slate-700 sm:grid-cols-2">
+          <li>1 · <a class="underline decoration-slate-300 hover:decoration-slate-900" href="#c1">A payload per kind behind the Generator seam</a></li>
+          <li>2 · <a class="underline decoration-slate-300 hover:decoration-slate-900" href="#c2">One adapter factory and one tier knob</a></li>
+          <li>3 · <a class="underline decoration-slate-300 hover:decoration-slate-900" href="#c3">A region map behind <code>World</code></a></li>
+          <li>4 · <a class="underline decoration-slate-300 hover:decoration-slate-900" href="#c4">A record-driven world state graph</a></li>
+          <li>5 · <a class="underline decoration-slate-300 hover:decoration-slate-900" href="#c5">The in-flight model moves into <code>World</code></a></li>
+          <li>6 · <a class="underline decoration-slate-300 hover:decoration-slate-900" href="#c6">Biome as a deep module</a></li>
+          <li>7 · <a class="underline decoration-slate-300 hover:decoration-slate-900" href="#c7">World-supplied geometry for Predictor and Scheduler</a></li>
+          <li>8 · <a class="underline decoration-slate-300 hover:decoration-slate-900" href="#c8">One wire module for the bridge</a></li>
+        </ol>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+        <!-- ============================================================ candidate 1 ============================================================ -->
+        <article id="c1" class="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div class="space-y-5 p-6">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs uppercase tracking-wider text-slate-500">Candidate 1</span>
+              <span class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-300">Strong</span>
+              <span class="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">in-process</span>
+            </div>
+            <h2 class="font-serif text-2xl">Deepen <code>Asset</code>: one payload per kind behind the Generator seam</h2>
+
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Files</h3>
+              <ul class="mt-1 font-mono text-sm text-slate-700">
+                <li>realmweaver/types.py — <span class="text-slate-500">AssetSpec.kind · Asset.image · Asset.nbytes · Generator</span></li>
+                <li>realmweaver/assets/diffusion.py · procedural.py · alpha.py</li>
+                <li>realmweaver/bridge/app.py — <span class="text-slate-500">Bridge.generate · _png · png</span></li>
+                <li>realmweaver/cli.py — <span class="text-slate-500">_png · _thumb · _generate</span></li>
+                <li>realmweaver/metrics/bench.py · quality.py</li>
+                <li>realmweaver/world/world.py — <span class="text-slate-500">_asset_for</span></li>
+              </ul>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">Before · the pixel invariant is the interface</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <pre class="mermaid">
+flowchart LR
+  G["Generator seam<br/>generate(spec) → Asset"]
+  A["Asset.image<br/>uint8 HxWx3 or HxWx4<br/>Kind = texture or sprite"]
+  W["World._asset_for<br/>embed(asset.image)"]
+  B["Bridge<br/>_png: PIL → PNG<br/>/generate: tileability(asset.image)"]
+  C["CLI<br/>_png: PIL → PNG<br/>_thumb: reshape pixels"]
+  M["bench · metrics<br/>a.image for every asset"]
+  G --> A
+  A -. leak .-> W
+  A -. leak .-> B
+  A -. leak .-> C
+  A -. leak .-> M
+  classDef mod fill:#ffffff,stroke:#334155,stroke-width:1.5px,color:#0f172a;
+  classDef inv fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+  class G,W,B,C,M mod
+  class A inv
+  linkStyle 1,2,3,4 stroke:#dc2626,stroke-width:2px;
+                  </pre>
+                </div>
+              </div>
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">After · callers ask the payload, never the pixels</p>
+                <div class="relative h-[320px] rounded-lg border border-slate-200 bg-white p-3">
+                  <div class="deep absolute left-3 top-3 flex h-[296px] w-[54%] flex-col rounded-lg border-4 border-slate-900 p-3 text-white">
+                    <div class="text-[10px] uppercase tracking-wider text-emerald-300">Asset · deep module</div>
+                    <div class="mt-1 border-b border-slate-600 pb-2 font-mono text-[10px] leading-snug text-slate-100">
+                      kind · id · nbytes · encode() → bytes + media type · preview() → uint8 HxWx3
+                    </div>
+                    <div class="mt-2 grid grid-cols-2 gap-1.5 text-[10px] text-slate-400">
+                      <div class="rounded border border-slate-600 p-1.5">Texture payload<br /><span class="text-slate-500">pixels · PNG · tileability</span></div>
+                      <div class="rounded border border-slate-600 p-1.5">Sprite payload<br /><span class="text-slate-500">pixels · alpha keyed · PNG</span></div>
+                      <div class="rounded border border-dashed border-slate-600 p-1.5">Mesh payload <span class="text-emerald-400">next</span><br /><span class="text-slate-500">glTF bytes · rendered preview</span></div>
+                      <div class="rounded border border-dashed border-slate-600 p-1.5">Clip payload <span class="text-emerald-400">next</span><br /><span class="text-slate-500">animation · thumbnail preview</span></div>
+                    </div>
+                    <div class="mt-auto text-[10px] text-slate-500">Generator.generate(spec) → Asset · each adapter declares the kinds it makes</div>
+                  </div>
+                  <div class="absolute right-3 top-3 w-[36%] space-y-2">
+                    <div class="rounded border border-slate-300 bg-white p-2 text-[11px]"><span class="text-[9px] uppercase tracking-wider text-slate-500">World</span><br />embed(asset.preview())</div>
+                    <div class="rounded border border-slate-300 bg-white p-2 text-[11px]"><span class="text-[9px] uppercase tracking-wider text-slate-500">Bridge</span><br />/asset/{id} → encode()</div>
+                    <div class="rounded border border-slate-300 bg-white p-2 text-[11px]"><span class="text-[9px] uppercase tracking-wider text-slate-500">CLI</span><br />--out → encode()</div>
+                    <div class="rounded border border-slate-300 bg-white p-2 text-[11px]"><span class="text-[9px] uppercase tracking-wider text-slate-500">Bench · metrics</span><br />preview() → tileability · style</div>
+                  </div>
+                  <svg class="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
+                    <defs>
+                      <marker id="ah1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#334155" /></marker>
+                    </defs>
+                    <line x1="61%" y1="34" x2="57.5%" y2="46" stroke="#334155" stroke-width="1.5" marker-end="url(#ah1)" />
+                    <line x1="61%" y1="92" x2="57.5%" y2="50" stroke="#334155" stroke-width="1.5" marker-end="url(#ah1)" />
+                    <line x1="61%" y1="150" x2="57.5%" y2="54" stroke="#334155" stroke-width="1.5" marker-end="url(#ah1)" />
+                    <line x1="61%" y1="208" x2="57.5%" y2="58" stroke="#334155" stroke-width="1.5" marker-end="url(#ah1)" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <dl class="space-y-2 text-sm">
+              <div><dt class="inline font-semibold">Problem.</dt> <dd class="inline"><code>Generator.generate(spec) → Asset</code> reads as a one-method interface, but what every caller must know is "<code>Asset.image</code> is uint8 HxWx3 or HxWx4 and <code>Kind</code> is texture or sprite": ten reads of <code>.image</code> across five modules, PNG encoding written twice (bridge and CLI), <code>/generate</code> reporting tileability on a sprite, and nowhere for a mesh, a material set or an animation clip to go without editing all of them.</dd></div>
+              <div><dt class="inline font-semibold">Solution.</dt> <dd class="inline"><code>Asset</code> carries a kind-typed payload that encodes itself (bytes plus media type), knows its size, and renders a preview image; the embedder, the seam metrics, the bridge and the CLI ask the payload, never the pixels, and each Generator adapter declares the kinds it makes.</dd></div>
+            </dl>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Wins</h3>
+              <ul class="mt-1 grid gap-1 text-sm sm:grid-cols-2">
+                <li>· locality: pixel invariant in one record</li>
+                <li>· leverage: one encode, three callers</li>
+                <li>· interface names kinds; adapters declare theirs</li>
+                <li>· tests: one seam test per payload kind</li>
+                <li>· delete the second PNG encoder</li>
+                <li>· metrics stop assuming pixels</li>
+              </ul>
+            </div>
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Extends ADR-0003 rather than reopening it: <code>/asset/{id}.png</code> stays the texture route; media-typed assets are additive.</div>
+          </div>
+        </article>
+
+        <!-- ============================================================ candidate 2 ============================================================ -->
+        <article id="c2" class="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div class="space-y-5 p-6">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs uppercase tracking-wider text-slate-500">Candidate 2</span>
+              <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-300">Worth exploring</span>
+              <span class="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">local-substitutable</span>
+            </div>
+            <h2 class="font-serif text-2xl">Collapse adapter selection and the quality-tier knob into <code>realmweaver.assets</code></h2>
+
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Files</h3>
+              <ul class="mt-1 font-mono text-sm text-slate-700">
+                <li>realmweaver/assets/__init__.py</li>
+                <li>realmweaver/cli.py — <span class="text-slate-500">_adapters · _diffusion_arm · _STEPS</span></li>
+                <li>realmweaver/bridge/app.py — <span class="text-slate-500">_adapters · generator_kind · GenerateRequest.steps</span></li>
+                <li>realmweaver/metrics/bench.py — <span class="text-slate-500">make_generator</span></li>
+                <li>realmweaver/world/world.py — <span class="text-slate-500">_STEPS</span></li>
+                <li>realmweaver/assets/diffusion.py — <span class="text-slate-500">_TIERS</span></li>
+                <li>realmweaver/types.py — <span class="text-slate-500">AssetSpec.steps · Tier</span></li>
+              </ul>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">Before · the same two facts, spelled six times</p>
+                <div class="space-y-1.5 rounded-lg border border-slate-200 bg-stone-50 p-3">
+                  <div class="band h-10 rounded border-l-4 border-red-500 bg-white"><span><b>cli.py</b> · _STEPS = {draft: 4, refine: 8} · _adapters(mode) · _diffusion_arm(pool)</span></div>
+                  <div class="band h-10 rounded border-l-4 border-red-500 bg-white"><span><b>world/world.py</b> · _STEPS = {draft: 4, refine: 8}</span></div>
+                  <div class="band h-10 rounded border-l-4 border-red-500 bg-white"><span><b>assets/diffusion.py</b> · _TIERS = {draft: (1.0, 1), refine: (5.0, 8)}</span></div>
+                  <div class="band h-10 rounded border-l-4 border-red-500 bg-white"><span><b>bridge/app.py</b> · GenerateRequest.steps = 4 · _adapters(generator, device) · type(generator).__name__</span></div>
+                  <div class="band h-10 rounded border-l-4 border-red-500 bg-white"><span><b>types.py</b> · AssetSpec.steps = 4</span></div>
+                  <div class="band h-10 rounded border-l-4 border-red-500 bg-white"><span><b>metrics/bench.py</b> · make_generator(pool) · type(generator).__name__ in the report</span></div>
+                  <p class="pt-1 text-[11px] text-slate-500">Six thin bands; a third adapter or a third tier edits every one.</p>
+                </div>
+              </div>
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">After · two thick bands, four readers</p>
+                <div class="space-y-2 rounded-lg border border-slate-200 bg-stone-50 p-3">
+                  <div class="band deep h-24 rounded border-l-8 border-emerald-500 text-white">
+                    <span><b>types.py · TierConfig</b><br />steps · guidance · level of detail (next), per asset kind<br />AssetSpec derives its steps; an explicit override still wins</span>
+                  </div>
+                  <div class="band deep h-24 rounded border-l-8 border-emerald-500 text-white">
+                    <span><b>assets/__init__.py · adapters(settings, mode)</b><br />→ (Generator, Embed): diffusion + DINOv2 on CUDA, procedural + histogram elsewhere, FLUX.2-klein or a mesh adapter when wired<br />Generator.kind replaces class-name dispatch</span>
+                  </div>
+                  <div class="grid grid-cols-4 gap-1.5 pt-1">
+                    <div class="rounded border border-slate-300 bg-white px-2 py-1 text-center text-[10px] uppercase tracking-wider text-slate-600">cli</div>
+                    <div class="rounded border border-slate-300 bg-white px-2 py-1 text-center text-[10px] uppercase tracking-wider text-slate-600">bridge</div>
+                    <div class="rounded border border-slate-300 bg-white px-2 py-1 text-center text-[10px] uppercase tracking-wider text-slate-600">bench</div>
+                    <div class="rounded border border-slate-300 bg-white px-2 py-1 text-center text-[10px] uppercase tracking-wider text-slate-600">world</div>
+                  </div>
+                  <p class="text-[11px] text-slate-500">Readers read; none redefines.</p>
+                </div>
+              </div>
+            </div>
+
+            <dl class="space-y-2 text-sm">
+              <div><dt class="inline font-semibold">Problem.</dt> <dd class="inline">"Which adapter for this device" is written twice and resolved from the adapter's class name, and tier → steps is written five times (world, CLI, diffusion, the bridge request default, the <code>AssetSpec</code> default); the third adapter, FLUX.2-klein per ADR-0001 or a mesh generator per the roadmap, multiplies every copy.</dd></div>
+              <div><dt class="inline font-semibold">Solution.</dt> <dd class="inline">One factory in the assets package builds the adapter pair (generator, embedder) for a device and mode, each adapter names its own kind, and the quality tier becomes a small record (steps, guidance, tomorrow a mesh's level of detail) that <code>AssetSpec</code> derives its steps from.</dd></div>
+            </dl>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Wins</h3>
+              <ul class="mt-1 grid gap-1 text-sm sm:grid-cols-2">
+                <li>· locality: a tier change edits one table</li>
+                <li>· leverage: one factory, four callers</li>
+                <li>· no class-name dispatch</li>
+                <li>· tests: factory tested once, not per CLI and bridge</li>
+              </ul>
+            </div>
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">ADR-0001's quality tier slots into the factory; nothing reopened. The procedural adapter remains the local stand-in for diffusion in tests.</div>
+          </div>
+        </article>
+
+        <!-- ============================================================ candidate 3 ============================================================ -->
+        <article id="c3" class="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div class="space-y-5 p-6">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs uppercase tracking-wider text-slate-500">Candidate 3</span>
+              <span class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-300">Strong</span>
+              <span class="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">in-process</span>
+            </div>
+            <h2 class="font-serif text-2xl">Deepen <code>World</code> behind a region map; <code>request_chunk</code> reports its own transition</h2>
+
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Files</h3>
+              <ul class="mt-1 font-mono text-sm text-slate-700">
+                <li>realmweaver/world/world.py — <span class="text-slate-500">__init__ · request_chunk · _solve</span></li>
+                <li>realmweaver/world/graph.py — <span class="text-slate-500">add_region · _set_tileset · neighbours</span></li>
+                <li>realmweaver/bridge/app.py — <span class="text-slate-500">Bridge.chunk · Bridge.biome · chunk_json</span></li>
+                <li>realmweaver/cli.py · realmweaver/config.py — <span class="text-slate-500">--biome · Settings.biome</span></li>
+              </ul>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">Before · the bridge reads past the seam, twice</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <pre class="mermaid">
+sequenceDiagram
+  participant B as Bridge.chunk
+  participant W as World
+  participant G as WorldStateGraph
+  rect rgb(254, 242, 242)
+    B->>G: chunk(cx, cy) → state before
+  end
+  B->>W: request_chunk(cx, cy, tier)
+  Note over W: biome · tileset · threshold · region<br/>fixed at __init__: one region per world
+  W->>G: neighbours · add_chunk · add_asset · set_state
+  W-->>B: Chunk
+  rect rgb(254, 242, 242)
+    B->>B: chunk.state differs from before? → ready_event
+  end
+                  </pre>
+                </div>
+              </div>
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">After · one call, one answer</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <pre class="mermaid">
+sequenceDiagram
+  participant B as Bridge.chunk
+  participant W as World, deep
+  participant R as RegionMap
+  B->>W: request_chunk(cx, cy, tier)
+  W->>R: region_at(cx, cy)
+  R-->>W: Region = biome · tileset · threshold
+  Note over W: solve against neighbours of the same region,<br/>a transition rule where regions meet
+  W-->>B: chunk + transition (created · upgraded · unchanged)
+  B->>B: transition? → ready_event
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            <dl class="space-y-2 text-sm">
+              <div><dt class="inline font-semibold">Problem.</dt> <dd class="inline">A world is one biome: <code>biome</code>, <code>tileset</code>, <code>threshold</code> and <code>region</code> are four attributes of one concept fixed at construction (<code># ponytail: one region per world</code>), the bridge keeps its own <code>biome</code>, and to learn whether a chunk was created or upgraded the bridge reads <code>world.graph.chunk()</code> before and after the call; the glossary already names the missing module, Region, and an open world is many of them, each with its own layout rules, style vector and, tomorrow, terrain, NPC and quest state.</dd></div>
+              <div><dt class="inline font-semibold">Solution.</dt> <dd class="inline"><code>World</code> takes a region map (which region owns which chunk; the single-biome map is the first adapter, a biome-noise map the next), a Region record carries biome, compiled tileset and threshold, the border solve asks the neighbour's region whether it shares a tileset, and <code>request_chunk</code> returns the chunk together with its transition so no caller diffs graph state.</dd></div>
+            </dl>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Wins</h3>
+              <ul class="mt-1 grid gap-1 text-sm sm:grid-cols-2">
+                <li>· locality: region facts in one record</li>
+                <li>· leverage: N biomes, zero new call sites</li>
+                <li>· bridge stops reading <code>world.graph</code></li>
+                <li>· tests: region transitions at the World seam</li>
+              </ul>
+            </div>
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">ADR-0004 kept: Region is already a node kind and the graph stays the source of truth; the ponytail note in <code>world.py</code> names several biomes per world as the upgrade path.</div>
+          </div>
+        </article>
+
+        <!-- ============================================================ candidate 4 ============================================================ -->
+        <article id="c4" class="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div class="space-y-5 p-6">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs uppercase tracking-wider text-slate-500">Candidate 4</span>
+              <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-300">Worth exploring</span>
+              <span class="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">in-process</span>
+            </div>
+            <h2 class="font-serif text-2xl">Make the world state graph record-driven: one schema for write, validate and JSON</h2>
+
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Files</h3>
+              <ul class="mt-1 font-mono text-sm text-slate-700">
+                <li>realmweaver/world/graph.py — <span class="text-slate-500">add_region · add_chunk · add_asset · set_state · remove_chunk · validate · to_json · from_json</span></li>
+                <li>realmweaver/world/world.py — <span class="text-slate-500">every self.graph call</span></li>
+                <li>tests/test_world_graph.py — <span class="text-slate-500">asserts through graph.g</span></li>
+              </ul>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">Before · the schema lives in three places</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <pre class="mermaid">
+flowchart TB
+  subgraph GP["world/graph.py"]
+    direction TB
+    A1["add_region · add_chunk · add_asset · set_state · remove_chunk<br/>schema copy 1: node attributes spelled by hand"]
+    V["validate()<br/>schema copy 2: _PARENT_KIND · one INSTANCE_OF per tile · ADJACENT geometry"]
+    J["from_json()<br/>schema copy 3: rebuild Chunk · TileSet · style vectors"]
+  end
+  T["tests/test_world_graph.py<br/>asserts through graph.g.nodes and out_edges"]
+  N["NPC · Quest · 3D Region (next)<br/>touch all three"]
+  T -. leak .-> A1
+  N --> A1
+  N --> V
+  N --> J
+  classDef dup fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+  classDef mod fill:#ffffff,stroke:#334155,stroke-width:1.5px,color:#0f172a;
+  class A1,V,J dup
+  class T,N mod
+  linkStyle 0 stroke:#dc2626,stroke-width:2px;
+                  </pre>
+                </div>
+              </div>
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">After · declare once, derive the rest</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <pre class="mermaid">
+flowchart TB
+  S["Record declarations<br/>Region · Chunk · Tile · Asset<br/>+ NPC · Quest · Region3D (next)"]
+  P["put(record)<br/>validates on write"]
+  R["records(kind)"]
+  D["validate · to_json · from_json · count<br/>derived from the declarations"]
+  W["World"]
+  S --> P
+  S --> R
+  S --> D
+  W --> P
+  W --> R
+  classDef deep fill:#0f172a,stroke:#0f172a,stroke-width:3px,color:#ffffff;
+  classDef mod fill:#ffffff,stroke:#334155,stroke-width:1.5px,color:#0f172a;
+  class S deep
+  class P,R,D,W mod
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            <dl class="space-y-2 text-sm">
+              <div><dt class="inline font-semibold">Problem.</dt> <dd class="inline">ADR-0004 promises that agents write "only validated records", but the graph's interface is five bespoke write methods that spell node attributes by hand, a 60-line <code>validate()</code> that restates the schema (<code>_PARENT_KIND</code>, one INSTANCE_OF per tile, ADJACENT geometry), and a <code>from_json</code> that rebuilds <code>Chunk</code> and <code>TileSet</code> from those attributes a third time; tests reach into <code>graph.g.nodes</code> because the interface has no read for "the records of a kind". An NPC, quest or 3D-region kind touches all three and the tests.</dd></div>
+              <div><dt class="inline font-semibold">Solution.</dt> <dd class="inline">Declare each node kind once as a record (kind, parent kind, required fields, edge rules); writes go through one <code>put</code> that validates against the declaration, reads through one <code>records(kind)</code>, and validation, JSON and counts derive from the same declarations, so the roadmap's NPC and quest state are new declarations rather than new graph methods.</dd></div>
+            </dl>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Wins</h3>
+              <ul class="mt-1 grid gap-1 text-sm sm:grid-cols-2">
+                <li>· locality: the schema in one place</li>
+                <li>· leverage: a new kind is one declaration</li>
+                <li>· validate on write, as ADR-0004 says</li>
+                <li>· tests stop reaching <code>graph.g</code></li>
+              </ul>
+            </div>
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">ADR-0004 kept (networkx, no database, the same node and edge kinds); this delivers its "validated records" clause rather than contradicting it.</div>
+          </div>
+        </article>
+
+        <!-- ============================================================ candidate 5 ============================================================ -->
+        <article id="c5" class="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div class="space-y-5 p-6">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs uppercase tracking-wider text-slate-500">Candidate 5</span>
+              <span class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-300">Strong</span>
+              <span class="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">local-substitutable</span>
+            </div>
+            <h2 class="font-serif text-2xl">Move the in-flight model into <code>World</code>; the bridge becomes routes over events</h2>
+
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Files</h3>
+              <ul class="mt-1 font-mono text-sm text-slate-700">
+                <li>realmweaver/world/world.py — <span class="text-slate-500">tick · request_chunk</span></li>
+                <li>realmweaver/world/scheduler.py — <span class="text-slate-500">max_in_flight · next · done · abort</span></li>
+                <li>realmweaver/bridge/app.py — <span class="text-slate-500">Bridge.lock · priority · _prewarm_loop · first · generated · pngs · broadcast</span></li>
+                <li>realmweaver/cli.py — <span class="text-slate-500">_world --walk</span></li>
+              </ul>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">Before · three modules each hold a piece of "generating now"</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <pre class="mermaid">
+flowchart LR
+  subgraph BR["bridge/app.py: a second scheduler"]
+    direction TB
+    L["lock"]
+    P["priority counter"]
+    T["_prewarm_loop task"]
+    C2["generated · pngs caches"]
+    D["diff chunk.state → ready_event"]
+  end
+  subgraph WO["world/world.py"]
+    direction TB
+    K["tick(): generates inline"]
+    RC["request_chunk()"]
+  end
+  subgraph SC["world/scheduler.py"]
+    direction TB
+    IF["max_in_flight = 2<br/>unreachable"]
+    Q["priority queue · byte-capped LRU"]
+  end
+  T --> K
+  K --> RC
+  K --> Q
+  IF -. never .-> K
+  classDef dup fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+  classDef mod fill:#ffffff,stroke:#334155,stroke-width:1.5px,color:#0f172a;
+  class L,P,T,C2,D,IF dup
+  class K,RC,Q mod
+  linkStyle 3 stroke:#dc2626,stroke-width:2px;
+                  </pre>
+                </div>
+              </div>
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">After · one in-flight model, two adapters, routes on top</p>
+                <div class="relative h-[320px] rounded-lg border border-slate-200 bg-white p-3">
+                  <div class="deep absolute left-3 top-3 flex h-[296px] w-[58%] flex-col rounded-lg border-4 border-slate-900 p-3 text-white">
+                    <div class="text-[10px] uppercase tracking-wider text-emerald-300">World · deep module</div>
+                    <div class="mt-1 border-b border-slate-600 pb-2 font-mono text-[10px] leading-snug text-slate-100">
+                      submit(request) → Job · events() → ready · progress · failed · request_chunk(…) · asset(id)
+                    </div>
+                    <div class="mt-2 space-y-1.5 text-[10px] text-slate-400">
+                      <div class="rounded border border-slate-600 p-1.5">Runner <span class="text-slate-500">· two adapters:</span> <span class="text-slate-300">inline</span> (tests, CLI) <span class="text-slate-500">|</span> <span class="text-slate-300">one worker per in-flight slot</span> (bridge)</div>
+                      <div class="rounded border border-slate-600 p-1.5">Scheduler <span class="text-slate-500">· cap of two is real · priority = p / cost · player's request first · byte-capped LRU</span></div>
+                      <div class="rounded border border-slate-600 p-1.5">Events <span class="text-slate-500">· emitted by the thing that changed state, with progress and cancellation for long jobs (meshes, clips, dialogue)</span></div>
+                      <div class="rounded border border-slate-600 p-1.5">WorldStateGraph <span class="text-slate-500">· unchanged</span></div>
+                    </div>
+                  </div>
+                  <div class="absolute right-3 top-3 w-[32%] space-y-2">
+                    <div class="rounded border border-slate-300 bg-white p-2 text-[11px]"><span class="text-[9px] uppercase tracking-wider text-slate-500">Bridge</span><br />routes only · PNG cache fed by encode() · WS fan-out of events()</div>
+                    <div class="rounded border border-slate-300 bg-white p-2 text-[11px]"><span class="text-[9px] uppercase tracking-wider text-slate-500">CLI</span><br />world --walk on the inline runner</div>
+                    <div class="rounded border border-slate-300 bg-white p-2 text-[11px]"><span class="text-[9px] uppercase tracking-wider text-slate-500">Tests</span><br />"never more than two in flight" through World</div>
+                  </div>
+                  <svg class="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
+                    <defs>
+                      <marker id="ah5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#334155" /></marker>
+                    </defs>
+                    <line x1="65%" y1="46" x2="61.5%" y2="48" stroke="#334155" stroke-width="1.5" marker-end="url(#ah5)" />
+                    <line x1="65%" y1="118" x2="61.5%" y2="54" stroke="#334155" stroke-width="1.5" marker-end="url(#ah5)" />
+                    <line x1="65%" y1="180" x2="61.5%" y2="60" stroke="#334155" stroke-width="1.5" marker-end="url(#ah5)" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <dl class="space-y-2 text-sm">
+              <div><dt class="inline font-semibold">Problem.</dt> <dd class="inline">Three modules each hold a piece of "what is generating now": the scheduler's cap of two in flight, which <code>World.tick</code> can never reach because it generates inline; the bridge's lock, priority counter and prewarm task, a second scheduler written in asyncio so the player's request beats prewarm; and the bridge's <code>generated</code> and <code>pngs</code>, a second cache beside the world's byte-capped one. Ready events come from the bridge diffing chunk state, not from the module that changed it. Mesh generation at tens of seconds, animation clips and NPC dialogue streams need jobs with progress, cancellation and partial results, which a lock cannot carry.</dd></div>
+              <div><dt class="inline font-semibold">Solution.</dt> <dd class="inline"><code>World</code> owns submission, in-flight slots and an event stream; behind it one runner with two adapters, inline (tests, CLI) and a worker per slot (bridge), so the scheduler's cap and priority are real; the bridge keeps routes, one PNG cache fed by the asset payload's encode, and a fan-out of the world's events to WebSocket subscribers.</dd></div>
+            </dl>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Wins</h3>
+              <ul class="mt-1 grid gap-1 text-sm sm:grid-cols-2">
+                <li>· locality: in-flight state in one module</li>
+                <li>· leverage: cap, priority, events reach the CLI too</li>
+                <li>· bridge shrinks to routes</li>
+                <li>· tests: "two in flight" reachable through World</li>
+                <li>· delete the lock, the priority counter, the prewarm task</li>
+                <li>· long jobs get progress and cancellation</li>
+              </ul>
+            </div>
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">ADR-0003 kept: the transport (HTTP PNG + chunk JSON, WebSocket events) is unchanged. The ponytail notes in <code>world.py</code> and <code>app.py</code> both already name a worker per slot as the upgrade path.</div>
+          </div>
+        </article>
+
+        <!-- ============================================================ candidate 6 ============================================================ -->
+        <article id="c6" class="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div class="space-y-5 p-6">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs uppercase tracking-wider text-slate-500">Candidate 6</span>
+              <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-300">Worth exploring</span>
+              <span class="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">in-process</span>
+            </div>
+            <h2 class="font-serif text-2xl">Deepen <code>Biome</code>: compiled tileset, prompt and palette behind one record</h2>
+
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Files</h3>
+              <ul class="mt-1 font-mono text-sm text-slate-700">
+                <li>realmweaver/biomes/__init__.py · realmweaver/biomes/*/biome.yaml</li>
+                <li>realmweaver/assets/prompts.py — <span class="text-slate-500">build_prompt</span></li>
+                <li>realmweaver/assets/procedural.py · diffusion.py · lora.py — <span class="text-slate-500">palette · lora · prompt</span></li>
+                <li>realmweaver/world/world.py · cli.py · metrics/bench.py — <span class="text-slate-500">tileset_from_example(b.example_map, b.legend)</span></li>
+                <li>realmweaver/bridge/app.py — <span class="text-slate-500">/biomes</span></li>
+              </ul>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">Before · shallow: interface as tall as the implementation</p>
+                <div class="rounded-lg border border-slate-200 bg-stone-50 p-3">
+                  <div class="mass h-[176px] rounded-t border border-b-0 border-slate-400 bg-white">
+                    <div class="text-[9px] uppercase tracking-wider text-slate-500">interface · what every caller must know</div>
+                    <div class="mt-1 font-mono">name · style · negative · coherence_threshold · legend · tiles{prompt, palette} · props · lora · example_map · tile_classes()</div>
+                    <div class="mt-2 text-slate-600">plus, outside the module: <span class="font-mono">build_prompt(biome, spec)</span> and <span class="font-mono">tileset_from_example(example_map, legend)</span>, the latter repeated by three callers; no schema version</div>
+                  </div>
+                  <div class="mass h-[70px] rounded-b border border-slate-400 bg-slate-100">
+                    <div class="text-[9px] uppercase tracking-wider text-slate-500">implementation</div>
+                    <div class="mt-1 font-mono">yaml.safe_load · two consistency checks</div>
+                  </div>
+                  <p class="pt-2 text-[11px] text-slate-500">Nine raw fields, nine call sites in seven modules.</p>
+                </div>
+              </div>
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">After · deep: a short interface over a tall implementation</p>
+                <div class="rounded-lg border border-slate-200 bg-stone-50 p-3">
+                  <div class="mass h-[70px] rounded-t border-4 border-b-0 border-slate-900 bg-white">
+                    <div class="text-[9px] uppercase tracking-wider text-slate-500">interface</div>
+                    <div class="mt-1 font-mono">tileset() · prompt(spec) · palette(cls) · threshold · lora · schema</div>
+                  </div>
+                  <div class="mass deep h-[176px] rounded-b border-4 border-slate-900 text-slate-300">
+                    <div class="text-[9px] uppercase tracking-wider text-emerald-300">implementation</div>
+                    <div class="mt-1 font-mono text-slate-100">load · schema version · legend and map validation · compile the tileset once · prompt rules · palette ramp · LoRA path</div>
+                    <div class="mt-2 text-slate-400">next, without touching callers: <span class="font-mono">terrain · materials per tile class · mesh props with placement rules · npc archetypes</span></div>
+                  </div>
+                  <p class="pt-2 text-[11px] text-slate-500">The 12×12 ASCII example map stays the authoring format (ADR-0002).</p>
+                </div>
+              </div>
+            </div>
+
+            <dl class="space-y-2 text-sm">
+              <div><dt class="inline font-semibold">Problem.</dt> <dd class="inline"><code>Biome</code> is the YAML laid flat: nine raw fields that nine call sites in seven modules read directly; the example map is compiled into a tileset by three different callers; <code>build_prompt</code> is a shallow module whose interface is as wide as its implementation; prompt and palette sit on <code>TileClass</code> as 2D facts; and the YAML carries no schema version, so a 3D biome (terrain, a material per tile class, mesh props with placement rules, NPC archetypes) would be a silent superset every reader learns to skip.</dd></div>
+              <div><dt class="inline font-semibold">Solution.</dt> <dd class="inline">The biome compiles what it loads: a cached tileset, the prompt pair for a spec, the palette for a class, the LoRA path; the YAML gains a schema version and typed blocks validated at load, so callers ask the biome for what they need instead of reading its fields.</dd></div>
+            </dl>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Wins</h3>
+              <ul class="mt-1 grid gap-1 text-sm sm:grid-cols-2">
+                <li>· locality: a YAML change edits one module</li>
+                <li>· leverage: one tileset, three callers</li>
+                <li>· delete <code>prompts.py</code></li>
+                <li>· tests: the schema tested once, per biome file</li>
+              </ul>
+            </div>
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">ADR-0002 kept: layout rules are still learned from the 12×12 ASCII example map; only who compiles them changes.</div>
+          </div>
+        </article>
+
+        <!-- ============================================================ candidate 7 ============================================================ -->
+        <article id="c7" class="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div class="space-y-5 p-6">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs uppercase tracking-wider text-slate-500">Candidate 7</span>
+              <span class="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700 ring-1 ring-slate-300">Speculative</span>
+              <span class="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">in-process</span>
+            </div>
+            <h2 class="font-serif text-2xl">Let <code>World</code> hand the Predictor and Scheduler their geometry</h2>
+
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Files</h3>
+              <ul class="mt-1 font-mono text-sm text-slate-700">
+                <li>realmweaver/world/predictor.py — <span class="text-slate-500">RING · _exit_chunk · rank</span></li>
+                <li>realmweaver/world/scheduler.py — <span class="text-slate-500">HORIZON · _distance · cost_s</span></li>
+                <li>realmweaver/world/world.py — <span class="text-slate-500">tick · observe_player</span></li>
+              </ul>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">Before · geometry baked into both modules</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <svg viewBox="0 0 440 300" class="h-[300px] w-full" aria-hidden="true">
+                    <defs>
+                      <marker id="ah7" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0,0 7,3.5 0,7" fill="#334155" /></marker>
+                    </defs>
+                    <g stroke="#94a3b8" stroke-width="1" fill="#f8fafc">
+                      <rect x="30" y="25" width="70" height="70" /><rect x="100" y="25" width="70" height="70" /><rect x="170" y="25" width="70" height="70" />
+                      <rect x="30" y="95" width="70" height="70" /><rect x="100" y="95" width="70" height="70" fill="#e2e8f0" /><rect x="170" y="95" width="70" height="70" />
+                      <rect x="30" y="165" width="70" height="70" /><rect x="100" y="165" width="70" height="70" /><rect x="170" y="165" width="70" height="70" />
+                    </g>
+                    <text x="135" y="134" text-anchor="middle" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">player</text>
+                    <g stroke="#334155" stroke-width="1.5" marker-end="url(#ah7)">
+                      <line x1="135" y1="130" x2="75" y2="72" /><line x1="135" y1="130" x2="135" y2="68" /><line x1="135" y1="130" x2="195" y2="72" />
+                      <line x1="135" y1="130" x2="72" y2="130" /><line x1="135" y1="130" x2="198" y2="130" />
+                      <line x1="135" y1="130" x2="75" y2="188" /><line x1="135" y1="130" x2="135" y2="192" /><line x1="135" y1="130" x2="195" y2="188" />
+                    </g>
+                    <g font-size="10" fill="#334155" font-family="ui-monospace, monospace">
+                      <text x="262" y="50">RING: eight square neighbours</text>
+                      <text x="262" y="68">rays leave a square chunk</text>
+                      <text x="262" y="86">one plane, no vertical travel</text>
+                      <text x="262" y="124">HORIZON = 2, Chebyshev</text>
+                      <text x="262" y="142">cost_s: one world-wide mean</text>
+                      <text x="262" y="160">texture, mesh, clip priced alike</text>
+                    </g>
+                    <text x="262" y="200" font-size="9" fill="#dc2626" font-family="ui-monospace, monospace">geometry in predictor.py and</text>
+                    <text x="262" y="212" font-size="9" fill="#dc2626" font-family="ui-monospace, monospace">scheduler.py, not in World</text>
+                    <text x="30" y="262" font-size="10" fill="#64748b" font-family="ui-monospace, monospace">report: top-3 hit-rate 0.99 vs 0.56 for the ring; accuracy is not the friction</text>
+                  </svg>
+                </div>
+              </div>
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">After · a neighbourhood and a cost per kind, supplied by World</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <svg viewBox="0 0 440 300" class="h-[300px] w-full" aria-hidden="true">
+                    <defs>
+                      <marker id="ah7b" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0,0 7,3.5 0,7" fill="#334155" /></marker>
+                    </defs>
+                    <g stroke="#94a3b8" stroke-width="1.5" class="seam">
+                      <line x1="118" y1="90" x2="196" y2="70" /><line x1="230" y1="76" x2="300" y2="100" /><line x1="110" y1="128" x2="150" y2="190" /><line x1="190" y1="210" x2="282" y2="206" /><line x1="306" y1="128" x2="296" y2="188" />
+                    </g>
+                    <g font-family="ui-monospace, monospace" font-size="9">
+                      <circle cx="80" cy="100" r="40" fill="#f8fafc" stroke="#334155" stroke-width="1.5" />
+                      <text x="80" y="97" text-anchor="middle" fill="#0f172a">meadow</text><text x="80" y="109" text-anchor="middle" fill="#64748b">textures</text>
+                      <rect x="196" y="48" width="70" height="44" rx="6" fill="#f8fafc" stroke="#334155" stroke-width="1.5" />
+                      <text x="231" y="66" text-anchor="middle" fill="#0f172a">cave</text><text x="231" y="78" text-anchor="middle" fill="#64748b">interior · portal</text>
+                      <circle cx="318" cy="112" r="28" fill="#f8fafc" stroke="#334155" stroke-width="1.5" />
+                      <text x="318" y="109" text-anchor="middle" fill="#0f172a">tower</text><text x="318" y="121" text-anchor="middle" fill="#64748b">vertical</text>
+                      <ellipse cx="160" cy="212" rx="48" ry="26" fill="#f8fafc" stroke="#334155" stroke-width="1.5" />
+                      <text x="160" y="209" text-anchor="middle" fill="#0f172a">forest</text><text x="160" y="221" text-anchor="middle" fill="#64748b">meshes · clips</text>
+                      <rect x="282" y="186" width="62" height="40" rx="6" fill="#f8fafc" stroke="#334155" stroke-width="1.5" />
+                      <text x="313" y="203" text-anchor="middle" fill="#0f172a">village</text><text x="313" y="215" text-anchor="middle" fill="#64748b">npc dialogue</text>
+                    </g>
+                    <text x="150" y="40" font-size="9" fill="#64748b" font-family="ui-monospace, monospace">dashed = neighbourhood edges the world supplies</text>
+                    <g font-size="10" fill="#334155" font-family="ui-monospace, monospace">
+                      <text x="30" y="268">rank(current, neighbourhood) · submit(job) priced by a measured cost per kind</text>
+                      <text x="30" y="284" fill="#64748b">hold until a second geometry exists: one adapter is a hypothetical seam</text>
+                    </g>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <dl class="space-y-2 text-sm">
+              <div><dt class="inline font-semibold">Problem.</dt> <dd class="inline">The predictor ranks the eight-ring of square chunks by casting rays in a plane, and the scheduler prices every job with one world-wide mean cost and prunes by a Chebyshev horizon of two; an open 3D world has regions of unequal size, vertical travel, interiors and portals, and jobs whose cost differs by an order of magnitude (texture, mesh, animation). The measured 2D form works (report: top-3 hit-rate 0.99 against 0.56 for the ring), so the friction is not accuracy; it is geometry baked into two modules rather than supplied by the world.</dd></div>
+              <div><dt class="inline font-semibold">Solution.</dt> <dd class="inline">The predictor ranks a candidate set the world supplies (the chunk ring today, region portals tomorrow), and the scheduler prices each job by a measured cost per kind and evicts by a distance the world supplies. Hold until a second geometry exists: one adapter is a hypothetical seam.</dd></div>
+            </dl>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Wins</h3>
+              <ul class="mt-1 grid gap-1 text-sm sm:grid-cols-2">
+                <li>· locality: geometry lives in World</li>
+                <li>· leverage: one predictor for 3D regions</li>
+                <li>· cost per kind, not a world mean</li>
+                <li>· speculative: wait for the second adapter</li>
+              </ul>
+            </div>
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">No ADR affected. Depends on Candidate 3 for the region map that would supply the neighbourhood.</div>
+          </div>
+        </article>
+
+        <!-- ============================================================ candidate 8 ============================================================ -->
+        <article id="c8" class="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div class="space-y-5 p-6">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-xs uppercase tracking-wider text-slate-500">Candidate 8</span>
+              <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-300">Worth exploring</span>
+              <span class="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">ports &amp; adapters</span>
+            </div>
+            <h2 class="font-serif text-2xl">One wire module: chunk JSON, ready events and the Unity DTOs from one table</h2>
+
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Files</h3>
+              <ul class="mt-1 font-mono text-sm text-slate-700">
+                <li>realmweaver/bridge/app.py — <span class="text-slate-500">chunk_json · ready_event · _kv · GenerateRequest</span></li>
+                <li>tests/fixtures/chunk_example.json · tests/test_unity_protocol.py</li>
+                <li>unity/com.realmweaver.client/Runtime/RealmWeaverClient.cs — <span class="text-slate-500">ChunkDto · ReadyEvent · KV</span></li>
+                <li>realmweaver/bridge/static/index.html</li>
+              </ul>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">Before · the contract written three times, twins by hand</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <pre class="mermaid">
+flowchart LR
+  CJ["bridge.chunk_json<br/>tiles + tilesFlat<br/>assets + assetList<br/>prefabs + prefabList"]
+  RE["bridge.ready_event<br/>assets + assetList"]
+  FX["tests/fixtures/chunk_example.json<br/>copy 2"]
+  CS["RealmWeaverClient.cs DTOs<br/>copy 3, checked by a regex"]
+  OP["operator page"]
+  CJ --- FX
+  FX --- CS
+  RE -. drifted once .-> CS
+  CJ --> OP
+  classDef dup fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+  classDef mod fill:#ffffff,stroke:#334155,stroke-width:1.5px,color:#0f172a;
+  class CJ,RE,FX,CS dup
+  class OP mod
+  linkStyle 2 stroke:#dc2626,stroke-width:2px;
+                  </pre>
+                </div>
+              </div>
+              <div>
+                <p class="mb-1 text-xs uppercase tracking-wider text-slate-500">After · one definition per message, two adapters of one port</p>
+                <div class="rounded-lg border border-slate-200 bg-white p-3">
+                  <pre class="mermaid">
+flowchart LR
+  W["bridge/wire.py<br/>ChunkWire · ReadyWire<br/>MeshWire · DialogueWire (next)<br/>one flat-encoding rule"]
+  FX["fixture: generated"]
+  CS["RealmWeaverClient.cs DTO check: reads the field table"]
+  U["Unity client: adapter"]
+  OP["operator page: adapter"]
+  W --> FX
+  W --> CS
+  W --> U
+  W --> OP
+  classDef deep fill:#0f172a,stroke:#0f172a,stroke-width:3px,color:#ffffff;
+  classDef mod fill:#ffffff,stroke:#334155,stroke-width:1.5px,color:#0f172a;
+  class W deep
+  class FX,CS,U,OP mod
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            <dl class="space-y-2 text-sm">
+              <div><dt class="inline font-semibold">Problem.</dt> <dd class="inline">The chunk contract is written three times: <code>chunk_json</code> emits every map twice (<code>tiles</code>/<code>tilesFlat</code>, <code>assets</code>/<code>assetList</code>, <code>prefabs</code>/<code>prefabList</code>) because JsonUtility reads no dictionaries, the fixture repeats it, and a regex over C# checks the DTO fields; it already diverged once (<code>assets</code> object versus KV list, caught by both reviews). Mesh ids, material sets, placements, animation clips and NPC dialogue each add a message with a flat twin.</dd></div>
+              <div><dt class="inline font-semibold">Solution.</dt> <dd class="inline">One wire module defines each message once with one flat-encoding rule; the fixture is generated from it, the C# DTO check reads its field table, and the Unity client and the operator page are two adapters of the same port.</dd></div>
+            </dl>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-slate-500">Wins</h3>
+              <ul class="mt-1 grid gap-1 text-sm sm:grid-cols-2">
+                <li>· locality: one definition per message</li>
+                <li>· leverage: fixture and DTO check derived</li>
+                <li>· no hand-kept twins</li>
+                <li>· tests: one contract test over one table</li>
+              </ul>
+            </div>
+            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">ADR-0003 kept: routes and transport unchanged. Pairs naturally with Candidate 1, whose media types the wire would carry.</div>
+          </div>
+        </article>
+      </section>
+
+      <!-- ============================================================ top recommendation ============================================================ -->
+      <section id="top-recommendation">
+        <div class="deep rounded-2xl border-4 border-slate-900 p-8 text-white shadow-lg">
+          <p class="text-xs uppercase tracking-wider text-emerald-300">Top recommendation</p>
+          <h2 class="mt-2 font-serif text-3xl">Candidate 1 · a payload per kind behind the Generator seam</h2>
+          <p class="mt-3 text-sm leading-relaxed text-slate-200">
+            It is the seam every 3D asset crosses first, it is in-process so the CPU suite covers it end to end, and it shrinks the bridge and the CLI
+            before Candidate 5 reshapes them, so the bridge is rewritten once against encode and preview rather than twice against <code>.image</code>.
+          </p>
+          <p class="mt-3 text-sm text-slate-400">Then, in order: <a class="underline decoration-slate-500 hover:text-white" href="#c3">Candidate 3</a> (region map) → <a class="underline decoration-slate-500 hover:text-white" href="#c5">Candidate 5</a> (in-flight model) → <a class="underline decoration-slate-500 hover:text-white" href="#c8">Candidate 8</a> (wire) and <a class="underline decoration-slate-500 hover:text-white" href="#c2">Candidate 2</a> (factory) as they fall out.</p>
+          <a class="mt-5 inline-block rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-emerald-400" href="#c1">Go to Candidate 1</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
