@@ -14,6 +14,8 @@ flowchart LR
   A --> M[Metrics<br/>tileability · style · KID/FID · VRAM]
 ```
 
+![RealmWeaver operator page: generate panel, world canvas, benchmark table read from the report](docs/images/operator-page.png)
+
 ## Measured
 
 <!-- bench-table:start -->
