@@ -63,7 +63,7 @@ def table(report: dict) -> str:
         rows.append(
             (
                 "Latency p50 with memory pool on / off (s)",
-                f"{_fmt(on.get('latency_p50_s'))} / {_fmt(off.get('latency_p50_s'))}",
+                f"{_fmt(on.get('latency_s', {}).get('p50'))} / {_fmt(off.get('latency_s', {}).get('p50'))}",
                 "n/a",
             )
         )

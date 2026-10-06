@@ -19,7 +19,27 @@ flowchart LR
 ## Measured
 
 <!-- bench-table:start -->
-No benchmark report committed yet. Run `uv run realmweaver bench --n 50 --fid --pool-ab` and then `uv run python tools/report_table.py --write`.
+Measured 2026-10-06T04:05:54-07:00 on NVIDIA GeForce RTX 5070 Ti Laptop GPU (DiffusionGenerator, n=100, seed=0). Source: `reports/bench-20261006-040554.json`.
+
+| Metric | Measured | 2025 pitch target |
+|---|---|---|
+| Seconds per asset (draft, p50 / p95) | 0.39 / 0.41 | 2.70 |
+| Assets per minute | 153.5 | 120 |
+| Tileable share (seam ratio <= 1.2) | 80% | 94% |
+| Style consistency (within - cross biome cosine) | 0.097 | 0.89 |
+| FID / KID vs repo textures | 265.6 / 0.0397 (n=100) | 32.40 |
+| Peak VRAM allocated (GB) | 3.14 | 6.20 |
+| Prewarm predictor hit-rate (Markov vs 8-ring) | 0.99 vs 0.56 | n/a |
+| WFC solve per 16x16 chunk (ms) | 21.6 | n/a |
+| Latency p50 with memory pool on / off (s) | 0.39 / 0.68 | n/a |
+
+- fid_kid reference set: data\raw\textures (240 SDXL-Turbo textures from the 2025 repo, the only one available); FID is biased at small n, KID (subset mean, std) is the unbiased statistic, its std degenerate to 0 while n is at or below the subset size; neither is a ground-truth style target
+- latency_s: the generator's per-asset time over 100 draft seamless textures after 3 uncounted warm-ups; assets_per_min: textures / wall-clock of that loop
+- tileability: wrapped-seam over interior gradient ratio, 1.0 = seamless; share_leq_1_2: share at or below 1.2; tiling_score_mean: Tiled-Diffusion seam score, lower is better
+- wfc_ms_per_chunk: mean wall ms per 16x16 solve, 20 seeds per biome
+- predictor: top-3 hit-rate over 20 synthetic walks of 400 steps, heading noise sd 0.25; the ring baseline takes its first 3 neighbours
+- targets_2025 are the 2025 pitch numbers, not measurements
+- allocator: the second arm ran with the first pipeline resident (see resident_bytes)
 <!-- bench-table:end -->
 
 Caveats: the FID/KID reference set is the repo's own 240 SDXL-Turbo textures under `data/raw/textures` (the only reference available), so absolute FID is not comparable to papers; Unity frame-rate claims are out of scope until a Unity build is measured.
