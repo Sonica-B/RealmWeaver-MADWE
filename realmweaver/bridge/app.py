@@ -1,14 +1,14 @@
 """FastAPI routes over the `World` seam: PNG assets, chunk JSON, player position, benchmark report, WebSocket ready
 events and the operator page. Every call into the world or the generator runs in the threadpool under one lock (neither
-the world state graph nor the GPU adapter is thread-safe) so the event loop stays free while a chunk generates."""
+the world state graph nor the GPU adapter is thread-safe) so the event loop stays free while a chunk generates. PNGs
+are encoded once and served from a cache without that lock, and prewarm runs on one background task that yields to
+`/chunk` and `/generate` between chunks, so the player's own request never queues behind a prediction (story 24)."""
 
 from __future__ import annotations
 
 import asyncio
 import io
-import json
 import logging
-import os
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from realmweaver.biomes import biome_names, load_biome
 from realmweaver.config import settings
 from realmweaver.metrics import histogram_embed, tileability
+from realmweaver.metrics.bench import latest_report
 from realmweaver.types import Asset, AssetSpec, Chunk, Generator, Tier
 from realmweaver.world import World
 
@@ -33,7 +34,10 @@ log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / "static"
 IMMUTABLE = "public, max-age=31536000, immutable"
 MAX_GENERATED = 256  # ponytail: /generate results kept resident, oldest out; the upgrade path is a byte cap like the world's
+MAX_PNGS = 512  # ponytail: encoded PNGs kept by count, oldest out; the upgrade path is a byte cap shared with the world's
 Event = dict[str, Any]
+Key = tuple[int, int]
+Position = tuple[float, float]
 
 
 class GenerateRequest(BaseModel):  # AssetSpec fields; `subject` is the tile class or the prop name
@@ -72,19 +76,6 @@ def ready_event(chunk: Chunk) -> Event:
     return {"type": "ready", "chunk": [chunk.cx, chunk.cy], "assets": assets, "assetList": _kv(assets)}
 
 
-def latest_report(reports_dir: Path) -> dict[str, Any]:
-    """The newest `bench-*.json` (the file name carries the timestamp) or an honest `{"available": False}`."""
-    files = sorted(reports_dir.glob("bench-*.json"))
-    if not files:
-        return {"available": False}
-    try:
-        data = json.loads(files[-1].read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        log.warning("benchmark report %s is unreadable", files[-1], exc_info=True)
-        return {"available": False}
-    return {**data, "available": True, "file": files[-1].name}
-
-
 def _adapters(
     generator: Generator | None, device: str
 ) -> tuple[Generator, Callable[[np.ndarray], np.ndarray]]:
@@ -106,14 +97,24 @@ def _adapters(
 
 class Bridge:
     """World, generator and subscribers behind the routes. The world is built on first use so `/health` answers
-    before a diffusion model loads; `lock` serialises every call into the world or the generator."""
+    before a diffusion model loads. `lock` serialises every call into the world or the generator; `pngs` holds the
+    encoded bytes of every asset announced through chunk JSON, a ready event or `/generate`, served without it."""
 
     def __init__(self, world: World | None, generator: Generator | None) -> None:
         self._world, self._generator = world, world.generator if world else generator
+        # ponytail: one lock over the world state graph and the generator, so one generation runs at a time and the
+        # scheduler's second in-flight slot stays idle; the upgrade path is a worker thread per slot.
         self.lock = threading.Lock()
         self.listeners: set[asyncio.Queue[Event]] = set()
         self.generated: OrderedDict[str, Asset] = OrderedDict()
-        self.biome = world.biome if world else os.environ.get("REALMWEAVER_BIOME", "forest")
+        self.pngs: OrderedDict[str, bytes] = OrderedDict()
+        # Event-loop-only state: `priority` counts /chunk and /generate calls in flight, `positions` holds player
+        # positions the prewarm task has not observed yet, `prewarmed` what it prewarmed since the last /player.
+        self.priority = 0
+        self.positions: list[Position] = []
+        self.prewarmed: list[Key] = []
+        self._prewarm: asyncio.Task[None] | None = None
+        self.biome = world.biome if world else settings().biome
         self.device = str(getattr(self._generator, "device", "cpu")) if self._generator else settings().device
 
     @property
@@ -140,14 +141,23 @@ class Bridge:
         with self.lock:
             state = getattr(self.world.graph.chunk(cx, cy), "state", None)
             chunk = self.world.request_chunk(cx, cy, tier)
-            return chunk_json(chunk), ready_event(chunk) if chunk.state != state else None
+            result = chunk_json(chunk), ready_event(chunk) if chunk.state != state else None
+            assets = self._unencoded([chunk])
+        for asset in assets:
+            self._png(asset)
+        return result
 
-    def player(self, x: float, y: float) -> tuple[list[tuple[int, int]], list[Event]]:
+    def prewarm(self, positions: list[Position]) -> tuple[list[Key], list[Event]]:
+        """One prewarm step: observe the queued positions, then generate at most one predicted chunk."""
         with self.lock:
-            self.world.observe_player(x, y)
+            for x, y in positions:
+                self.world.observe_player(x, y)
             warmed = self.world.tick(1)
-            chunks = (self.world.graph.chunk(*key) for key in warmed)
-            return warmed, [ready_event(c) for c in chunks if c is not None]
+            chunks = [c for key in warmed if (c := self.world.graph.chunk(*key)) is not None]
+            events, assets = [ready_event(c) for c in chunks], self._unencoded(chunks)
+        for asset in assets:
+            self._png(asset)
+        return warmed, events
 
     def generate(self, spec: AssetSpec) -> dict[str, Any]:
         with self.lock:
@@ -158,21 +168,83 @@ class Bridge:
                 self.generated.popitem(last=False)
         return {"id": asset.id, "latency_s": asset.latency_s, "tileability": tileability(asset.image)}
 
-    def png(self, asset_id: str) -> bytes:
+    def chunks(self) -> list[dict[str, Any]]:  # every chunk resident in the world state graph
         with self.lock:
-            try:
-                asset = self.generated.get(asset_id) or self.world.asset(asset_id)
-            except KeyError:
-                raise HTTPException(404, f"unknown asset {asset_id}") from None
-        buf = io.BytesIO()
-        Image.fromarray(asset.image).save(buf, format="PNG")
-        return buf.getvalue()
+            resident = list(self.world.graph.chunks.values()) if self.loaded else []
+        return [{"cx": c.cx, "cy": c.cy, "state": c.state, "biome": c.biome} for c in resident]
 
     def stats(self) -> dict[str, Any]:  # empty until the first generation builds the world
         with self.lock:
             return self.world.stats() if self.loaded else {}
 
-    def broadcast(self, event: Event) -> None:  # event loop only
+    def _unencoded(self, chunks: list[Chunk]) -> list[Asset]:
+        """Under the lock: the chunks' assets without a cached PNG; resident after `request_chunk`, so dict lookups."""
+        return [self.world.asset(i) for c in chunks for i in c.asset_ids.values() if i not in self.pngs]
+
+    # -- PNGs, no world lock --------------------------------------------------------------------------------
+
+    def png(self, asset_id: str) -> bytes:
+        """The cached PNG, else one encoded now; the lock is taken only for an id this bridge never announced."""
+        data = self.pngs.get(asset_id)
+        if data is not None:
+            return data
+        asset = self.generated.get(asset_id)
+        if asset is None:
+            with self.lock:  # e.g. an id from a saved world, regenerated from its recorded spec
+                try:
+                    asset = self.world.asset(asset_id)
+                except KeyError:
+                    raise HTTPException(404, f"unknown asset {asset_id}") from None
+        return self._png(asset)
+
+    def _png(self, asset: Asset) -> bytes:
+        """Encode once into `pngs` (images never change) and serve from there, on whichever thread asks."""
+        data = self.pngs.get(asset.id)
+        if data is None:
+            # ponytail: PIL's default compression on the calling thread, which delays a fresh chunk's response by its
+            # assets' encode time; the upgrade path is encoding at a lower level or in the step that generated them.
+            buf = io.BytesIO()
+            Image.fromarray(asset.image).save(buf, format="PNG")
+            data = self.pngs[asset.id] = buf.getvalue()
+            while len(self.pngs) > MAX_PNGS:
+                self.pngs.popitem(last=False)
+        return data
+
+    # -- event loop only ------------------------------------------------------------------------------------
+
+    def player(self, x: float, y: float) -> list[Key]:
+        """Queue the position for the prewarm task and return what it prewarmed since the previous call."""
+        self.positions.append((x, y))
+        if self._prewarm is None or self._prewarm.done():
+            self._prewarm = asyncio.create_task(self._prewarm_loop())
+        warmed, self.prewarmed = self.prewarmed, []
+        return warmed
+
+    async def _prewarm_loop(self) -> None:
+        while self.positions:
+            # A /chunk or /generate is waiting for the lock: the player's own request goes first (story 24).
+            if self.priority:
+                await asyncio.sleep(0.02)
+                continue
+            batch, self.positions = self.positions, []
+            try:
+                warmed, events = await run_in_threadpool(self.prewarm, batch)
+            except Exception:  # e.g. a generator naming its missing requirement; /chunk reports it to callers
+                log.exception("prewarm failed")
+                return
+            self.prewarmed += warmed
+            for event in events:
+                self.broadcast(event)
+
+    async def first(self, call: Callable[..., Any], *args: Any) -> Any:
+        """Run a locked world call in the threadpool with priority over prewarm."""
+        self.priority += 1
+        try:
+            return await run_in_threadpool(call, *args)
+        finally:
+            self.priority -= 1
+
+    def broadcast(self, event: Event) -> None:
         for queue in self.listeners:
             queue.put_nowait(event)
 
@@ -209,7 +281,7 @@ def create_app(world: World | None = None, generator: Generator | None = None) -
             load_biome(body.biome)
         except KeyError as e:
             raise HTTPException(404, str(e)) from None
-        return await run_in_threadpool(bridge.generate, AssetSpec(**body.model_dump()))
+        return await bridge.first(bridge.generate, AssetSpec(**body.model_dump()))
 
     @app.get("/asset/{asset_id}.png")
     async def asset(asset_id: str) -> Response:
@@ -218,21 +290,23 @@ def create_app(world: World | None = None, generator: Generator | None = None) -
 
     @app.get("/chunk/{cx}/{cy}")
     async def chunk(cx: int, cy: int, tier: Tier = "draft") -> dict[str, Any]:
-        payload, event = await run_in_threadpool(bridge.chunk, cx, cy, tier)
+        payload, event = await bridge.first(bridge.chunk, cx, cy, tier)
         if event is not None:
             bridge.broadcast(event)
         return payload
 
+    @app.get("/chunks")
+    async def chunks() -> list[dict[str, Any]]:
+        return await run_in_threadpool(bridge.chunks)
+
     @app.post("/player")
     async def player(body: PlayerPosition) -> dict[str, Any]:
-        warmed, events = await run_in_threadpool(bridge.player, body.x, body.y)
-        for event in events:
-            bridge.broadcast(event)
-        return {"prewarmed": [list(key) for key in warmed]}
+        return {"prewarmed": [list(key) for key in bridge.player(body.x, body.y)]}
 
     @app.get("/report")
     async def report() -> dict[str, Any]:
-        return await run_in_threadpool(latest_report, settings().reports_dir)
+        data = await run_in_threadpool(latest_report, settings().reports_dir)
+        return {"available": False} if data is None else {**data, "available": True}
 
     @app.get("/stats")
     async def stats() -> dict[str, Any]:

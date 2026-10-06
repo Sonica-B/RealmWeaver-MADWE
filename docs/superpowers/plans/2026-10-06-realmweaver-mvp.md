@@ -420,9 +420,10 @@ Scheduler tests: never more than `max_in_flight` keys returned by `next()` befor
   - `POST /generate` body `AssetSpec` fields → `{"id", "latency_s", "tileability"}`
   - `GET /asset/{id}.png` → PNG bytes (`image/png`, `Cache-Control: immutable`)
   - `GET /chunk/{cx}/{cy}?tier=draft|refine` → `{"cx","cy","biome","size","tiles":[[cls,...]...],"assets":{cls:id},"prefabs":{cls:"Prefab_"+cls},"state"}`
-  - `POST /player` body `{"x","y"}` → `{"prewarmed":[[cx,cy],...]}` (calls `observe_player` then `tick(1)`)
+  - `POST /player` body `{"x","y"}` → `{"prewarmed":[[cx,cy],...]}` (queues the position for a background prewarm task that calls `observe_player` then `tick(1)` per step and yields to `/chunk` and `/generate` between steps; the list is what that task prewarmed since the previous call, possibly empty)
   - `GET /report` → latest bench JSON or `{"available": false}`
-  - `WS /events` → server pushes `{"type":"ready","chunk":[cx,cy],"assets":{...}}` after each chunk/prewarm completes and `{"type":"hello"}` on connect.
+  - `WS /events` → server pushes `{"type":"ready","chunk":[cx,cy],"assets":{...},"assetList":[{"k","v"}]}` after each chunk/prewarm completes and `{"type":"hello"}` on connect.
+  - Added during Task 5: `GET /chunks` → `[{"cx","cy","state","biome"}]` for every resident chunk (the page hydrates its map from it on load); `GET /stats` → the world's live counters, labelled as state on the page; `/health` also carries `loaded`, `biome`, `chunk_size`; `/biomes` entries carry a `palette` per tile class.
   - `GET /` → operator page.
 - Operator page (impeccable, **Operate** mode): biome select + tile class + seed → Generate; asset grid (latest first, tileability badge, shows 2×2 tiled preview on hover); world canvas: chunks coloured by tile class, click to request a chunk, arrow keys move the player marker and POST `/player`; metrics panel reads `/report` (shows "no benchmark yet" honestly); event log from the WebSocket. Keyboard navigable, AA contrast, no numbers that are not from `/report`. Run `impeccable detect --json realmweaver/bridge/static/index.html` once at the end and fix findings.
 
@@ -553,7 +554,7 @@ def test_index_served():
  "prefabs": {"grass": "Prefab_grass"}, "prefabList": [{"k": "grass", "v": "Prefab_grass"}]}
 ```
 
-`tilesFlat` is row-major (`index = y * size + x`) into `classes`. `tests/fixtures/chunk_example.json` holds this example; Task 6's protocol test checks the C# DTO fields against it and Task 5's bridge test checks its response keys against it. Events over `WS /events`: `{"type": "hello"}` on connect, then `{"type": "ready", "chunk": [cx, cy], "assets": {"grass": "..."}}`.
+`tilesFlat` is row-major (`index = y * size + x`) into `classes`. `tests/fixtures/chunk_example.json` holds this example; Task 6's protocol test checks the C# DTO fields against it and Task 5's bridge test checks its response keys against it. Events over `WS /events`: `{"type": "hello"}` on connect, then `{"type": "ready", "chunk": [cx, cy], "assets": {"grass": "..."}, "assetList": [{"k": "grass", "v": "..."}]}`; `assetList` is the form `JsonUtility` reads into `ReadyEvent`, `assets` stays for other clients.
 
 ## Execution notes (lead)
 

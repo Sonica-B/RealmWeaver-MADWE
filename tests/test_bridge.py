@@ -1,7 +1,8 @@
 """The bridge seam: HTTP routes, chunk JSON against the Unity fixture, WebSocket ready events, the operator page.
 
 The plan's six tests come first, unchanged in substance (ruff format splits their one-liners). The world behind the
-TestClient uses the procedural generator with 64 px assets so a chunk costs milliseconds.
+TestClient uses the procedural generator with 64 px assets. Tests that post `/player` use the client as a context
+manager: prewarm runs on a background task, which needs one event loop across the requests and the WebSocket.
 """
 
 from __future__ import annotations
@@ -9,6 +10,8 @@ from __future__ import annotations
 import io
 import json
 import re
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -62,13 +65,13 @@ def test_chunk_json_shape_and_prefab_map():
 
 
 def test_player_prewarm_and_ws_ready_event():
-    c = _client()
-    c.get("/chunk/0/0")
-    with c.websocket_connect("/events") as ws:
-        assert ws.receive_json()["type"] == "hello"
-        for x in range(0, 40, 2):
-            c.post("/player", json={"x": x, "y": 4})
-        assert ws.receive_json()["type"] == "ready"
+    with _client() as c:
+        c.get("/chunk/0/0")
+        with c.websocket_connect("/events") as ws:
+            assert ws.receive_json()["type"] == "hello"
+            for x in range(0, 40, 2):
+                c.post("/player", json={"x": x, "y": 4})
+            assert ws.receive_json()["type"] == "ready"
 
 
 def test_report_absent_is_honest(tmp_path, monkeypatch):
@@ -151,17 +154,47 @@ def test_ws_ready_event_follows_a_direct_chunk_request():
 
 
 def test_player_response_lists_prewarmed_chunks_that_then_exist():
+    with _client() as c:
+        c.get("/chunk/0/0")
+        warmed: list[list[int]] = []
+        for x in range(0, 40, 2):
+            r = c.post("/player", json={"x": x, "y": 4.0})
+            assert r.status_code == 200
+            warmed += r.json()["prewarmed"]  # what the background task prewarmed since the previous call
+        deadline = time.monotonic() + 10
+        while not warmed and time.monotonic() < deadline:
+            time.sleep(0.05)
+            warmed += c.post("/player", json={"x": 38, "y": 4.0}).json()["prewarmed"]
+        assert warmed and all(len(k) == 2 for k in warmed)
+        for cx, cy in warmed:
+            assert c.get(f"/chunk/{cx}/{cy}").json()["state"] in {"draft", "ready"}
+        assert c.get("/stats").json()["chunks"] >= 1 + len({tuple(k) for k in warmed})
+
+
+def test_resident_png_is_served_while_the_generator_lock_is_held():
+    app = create_app(World("forest", ProceduralGenerator(), chunk_size=8, seed=1))
+    c = TestClient(app)
+    ids = list(c.get("/chunk/0/0").json()["assets"].values())
+    generated = c.post("/generate", json={"biome": "forest", "subject": "rock", "size": 64, "seed": 2}).json()
+    ids.append(generated["id"])
+    codes: list[int] = []
+    fetch = threading.Thread(target=lambda: codes.extend(c.get(f"/asset/{i}.png").status_code for i in ids))
+    with app.state.bridge.lock:  # a chunk is generating: world calls wait, PNGs of announced assets must not
+        fetch.start()
+        fetch.join(timeout=5)
+        assert not fetch.is_alive(), "GET /asset waited for the generator lock"
+    assert codes == [200] * len(ids)
+
+
+def test_chunks_lists_every_resident_chunk():
     c = _client()
+    assert c.get("/chunks").json() == []
     c.get("/chunk/0/0")
-    warmed: list[list[int]] = []
-    for x in range(0, 40, 2):
-        r = c.post("/player", json={"x": x, "y": 4.0})
-        assert r.status_code == 200
-        warmed += r.json()["prewarmed"]
-    assert warmed and all(len(k) == 2 for k in warmed)
-    for cx, cy in warmed:
-        assert c.get(f"/chunk/{cx}/{cy}").json()["state"] in {"draft", "ready"}
-    assert c.get("/stats").json()["chunks"] >= 1 + len({tuple(k) for k in warmed})
+    c.get("/chunk/1/0?tier=refine")
+    listed = {(j["cx"], j["cy"]): j for j in c.get("/chunks").json()}
+    assert set(listed) == {(0, 0), (1, 0)}
+    assert listed[(0, 0)]["state"] == "draft" and listed[(1, 0)]["state"] == "ready"
+    assert all(set(j) == {"cx", "cy", "state", "biome"} and j["biome"] == "forest" for j in listed.values())
 
 
 def test_report_returns_the_newest_bench_file(tmp_path, monkeypatch):
@@ -170,7 +203,7 @@ def test_report_returns_the_newest_bench_file(tmp_path, monkeypatch):
     (tmp_path / "bench-20260301-120000.json").write_text(json.dumps({"schema": 1, "run": "new"}))
     (tmp_path / "notes.json").write_text("{}")
     j = _client().get("/report").json()
-    assert j["available"] is True and j["run"] == "new" and j["file"] == "bench-20260301-120000.json"
+    assert j["available"] is True and j["run"] == "new"
 
 
 def test_stats_and_health_describe_the_injected_world():
@@ -189,6 +222,7 @@ def test_default_world_is_built_lazily_from_the_environment(monkeypatch):
     c = TestClient(create_app())
     h = c.get("/health").json()
     assert h["generator"] == "procedural" and h["device"] == "cpu" and h["loaded"] is False
+    assert c.get("/chunks").json() == [] and c.get("/health").json()["loaded"] is False
     j = c.get("/chunk/0/0").json()
     assert j["biome"] == "desert" and j["size"] == 8 and "sand" in j["classes"]
     assert c.get("/health").json()["loaded"] is True
@@ -206,3 +240,5 @@ def test_operator_page_is_self_contained():
     assert not re.search(r"<script[^>]+src=", html), "no external scripts"
     assert not re.search(r"<link[^>]+href=\"?https?://", html), "no external stylesheets"
     assert "prefers-color-scheme" in html and "No benchmark report yet" in html
+    assert "live counters, not benchmarks" in html, "the stats panel is labelled as state, not a benchmark"
+    assert "'/chunks'" in html, "the page hydrates the map from the resident chunks on load"

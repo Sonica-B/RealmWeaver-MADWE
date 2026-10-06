@@ -9,4 +9,4 @@
 7. Tests live at the seams, use independent expected values, never mock internals. CPU tests must run under 60 s total; GPU tests carry `@pytest.mark.gpu`.
 8. Deliberate shortcuts carry a `# ponytail:` comment naming the ceiling and the upgrade path.
 9. ruff (`ruff check` + `ruff format`) is the only linter/formatter; type hints on every public function.
-10. Numbers shown anywhere come from a benchmark report; no literal performance claims in code, docs or UI.
+10. Performance and quality claims come from a benchmark report; no literal performance numbers in code, docs or UI. Live operational state (chunk counts, cache bytes, queue lengths) may be shown when it is labelled as state, never presented as a measurement.

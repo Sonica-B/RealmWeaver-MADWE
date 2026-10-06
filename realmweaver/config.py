@@ -23,6 +23,7 @@ class Settings:
     draft_lora_file: str = "Hyper-SD15-4steps-lora.safetensors"
     refine_lora_file: str = "Hyper-SD15-8steps-CFG-lora.safetensors"
     device: str = "cuda"
+    biome: str = "forest"  # the world a bridge builds on first use when none is injected
     cache_bytes: int = 512 * 1024 * 1024
     reports_dir: Path = Path("reports")
     models_dir: Path = Path("models")

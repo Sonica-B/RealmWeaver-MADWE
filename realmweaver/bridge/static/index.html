@@ -263,7 +263,8 @@
   .swatches li { display: inline-flex; align-items: center; gap: 5px; }
   .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, 0.18); display: inline-block; }
   #world-status { font-size: 13px; color: var(--text-2); margin-top: 6px; min-height: 1.4em; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 12px; margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 12.5px; }
+  .stats-head { font-size: 12.5px; font-weight: 550; color: var(--text-2); margin-top: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 12px; margin: 6px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 12.5px; }
   .stats div { display: flex; flex-direction: column; gap: 1px; }
   .stats dt { color: var(--text-2); }
   .stats dd { margin: 0; font-weight: 550; }
@@ -396,7 +397,8 @@
     </div>
     <ul class="swatches" id="swatches" aria-label="Tile classes"></ul>
     <p id="world-status" role="status" aria-live="polite">Pick a chunk to start.</p>
-    <dl class="stats" id="stats" aria-label="World statistics">
+    <h3 class="stats-head" id="h-stats">World state (live counters, not benchmarks)</h3>
+    <dl class="stats" id="stats" aria-labelledby="h-stats">
       <div><dt>Chunks</dt><dd id="s-chunks">—</dd></div>
       <div><dt>Assets</dt><dd id="s-assets">—</dd></div>
       <div><dt>Cache</dt><dd id="s-cache">—</dd></div>
@@ -574,6 +576,17 @@
       el.sSeams.textContent = has ? s.seam_violations : '—';
     } catch (e) {
       log('error', `GET /stats: ${e.message}`);
+    }
+  }
+
+  async function loadChunks() {
+    try {
+      const list = await api('/chunks');
+      if (list.length === 0) return;
+      log('info', `${list.length} chunk${list.length === 1 ? '' : 's'} already in the world; drawing them`);
+      await Promise.all(list.map((c) => requestChunk(c.cx, c.cy, 'draft')));
+    } catch (e) {
+      log('error', `GET /chunks: ${e.message}`);
     }
   }
 
@@ -938,7 +951,7 @@
 
   function renderReport(r) {
     const env = r.env || {}, params = r.params || {}, targets = r.targets_2025 || {};
-    const meta = [r.file, r.timestamp, env.generator && `${env.generator} generator`, env.gpu, params.n !== undefined && `n = ${params.n}`, params.seed !== undefined && `seed ${params.seed}`, Array.isArray(params.biomes) && params.biomes.join(', ')].filter(Boolean);
+    const meta = [r.timestamp, env.generator && `${env.generator} generator`, env.gpu, params.n !== undefined && `n = ${params.n}`, params.seed !== undefined && `seed ${params.seed}`, Array.isArray(params.biomes) && params.biomes.join(', ')].filter(Boolean);
     el.benchMeta.textContent = meta.join(' · ');
     el.benchRows.replaceChildren(...ROWS.map(([label, unit, measured, target]) => {
       const tr = document.createElement('tr');
@@ -1007,7 +1020,7 @@
   layout();
   draw();
   updatePlayerText();
-  Promise.allSettled([loadHealth(), loadBiomes(), loadReport(), loadStats()]).then(connect);
+  Promise.allSettled([loadHealth(), loadBiomes(), loadReport(), loadStats()]).then(() => { connect(); loadChunks(); });
   setInterval(() => { if (!document.hidden) loadStats(); }, 5000);
 })();
 </script>
