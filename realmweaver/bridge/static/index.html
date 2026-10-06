@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>RealmWeaver</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f3f4f0;
+    --surface: #fbfbf9;
+    --surface-2: #ecede8;
+    --border: #d3d7cf;
+    --border-strong: #aeb5aa;
+    --text: #1b1f1b;
+    --text-2: #555c55;
+    --text-3: #636a63;
+    --accent: #4a3fd1;
+    --accent-hover: #3d33b8;
+    --accent-soft: #e7e4fb;
+    --on-accent: #fcfcfa;
+    --ok-bg: #dff3e3;   --ok-text: #14532d;
+    --warn-bg: #fbefd2; --warn-text: #6b4a00;
+    --err-bg: #fbe0e0;  --err-text: #8c1d1d;
+    --tag-bg: #e6e8e1;  --tag-text: #3b413b;
+    --canvas-bg: #e3e5de;
+    --canvas-grid: #cdd1c7;
+    --canvas-ink: #1b1f1b;
+    --canvas-halo: #fbfbf9;
+    --sprite-ground: #d9dbd4;
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+    --radius: 12px;
+    --radius-s: 6px;
+    --ease: cubic-bezier(.2, .7, .2, 1);
+    --quick: 160ms;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141615;
+      --surface: #1c1f1d;
+      --surface-2: #232725;
+      --border: #303532;
+      --border-strong: #4a504c;
+      --text: #e7e9e4;
+      --text-2: #a3a9a2;
+      --text-3: #8a918a;
+      --accent: #9d95ff;
+      --accent-hover: #b4adff;
+      --accent-soft: #2a2846;
+      --on-accent: #141615;
+      --ok-bg: #173524;   --ok-text: #9fe3b4;
+      --warn-bg: #3a2e10; --warn-text: #f0c86a;
+      --err-bg: #3b1b1b;  --err-text: #f1a5a5;
+      --tag-bg: #2a2e2c;  --tag-text: #cfd4cd;
+      --canvas-bg: #111312;
+      --canvas-grid: #262a28;
+      --canvas-ink: #e7e9e4;
+      --canvas-halo: #141615;
+      --sprite-ground: #2b2f2d;
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { height: 100%; }
+  body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font: 400 14px/1.45 var(--font);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    caret-color: var(--accent);
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
+    accent-color: var(--accent);
+  }
+  ::selection { background: var(--accent); color: var(--on-accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 0.15em; }
+  h1, h2, h3, p, ul, ol, dl, figure { margin: 0; }
+  button, input, select { font: inherit; color: inherit; }
+  code { font-family: var(--mono); font-size: 0.92em; }
+
+  .skip {
+    position: absolute; left: 12px; top: -48px;
+    padding: 6px 10px; border-radius: var(--radius-s);
+    background: var(--accent); color: var(--on-accent); text-decoration: none;
+    transition: top var(--quick) var(--ease);
+  }
+  .skip:focus-visible { top: 12px; z-index: 10; }
+
+  /* ---- chrome ---------------------------------------------------------- */
+  .top {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand h1 { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+  .brand p { color: var(--text-2); font-size: 13px; }
+  .status { list-style: none; padding: 0; display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
+  .status li { display: inline-flex; align-items: center; gap: 7px; }
+  .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    border: 2px solid var(--text-3); background: transparent;
+    transition: background var(--quick) var(--ease), border-color var(--quick) var(--ease);
+  }
+  .dot[data-state="ok"] { background: var(--ok-text); border-color: var(--ok-text); }
+  .dot[data-state="warn"] { background: var(--warn-text); border-color: var(--warn-text); }
+  .dot[data-state="err"] { background: transparent; border-color: var(--err-text); }
+
+  .work {
+    display: grid;
+    gap: 16px;
+    padding: 16px 20px 28px;
+    grid-template-columns: 320px minmax(0, 1fr) 340px;
+    grid-template-areas:
+      "gen world bench"
+      "assets world events";
+    grid-template-rows: auto 1fr;
+    align-items: start;
+  }
+  @media (max-width: 1240px) {
+    .work {
+      grid-template-columns: 300px minmax(0, 1fr);
+      grid-template-areas:
+        "gen world"
+        "assets world"
+        "bench events";
+    }
+  }
+  @media (max-width: 820px) {
+    .work { grid-template-columns: minmax(0, 1fr); grid-template-areas: "gen" "world" "assets" "bench" "events"; padding: 12px; }
+    .top { padding: 10px 12px; }
+  }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px 16px;
+    min-width: 0;
+  }
+  .panel > h2 { font-size: 14px; font-weight: 650; margin-bottom: 10px; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .panel-head h2 { margin-bottom: 0; }
+  #p-gen { grid-area: gen; }
+  #p-assets { grid-area: assets; }
+  #p-world { grid-area: world; }
+  #p-bench { grid-area: bench; }
+  #p-events { grid-area: events; }
+
+  /* ---- controls -------------------------------------------------------- */
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field > label, .field > .label { font-size: 12.5px; color: var(--text-2); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form { display: flex; flex-direction: column; gap: 10px; }
+  select, input[type="number"] {
+    height: 32px; padding: 0 8px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: var(--radius-s);
+    transition: border-color var(--quick) var(--ease), background var(--quick) var(--ease);
+  }
+  select:hover, input[type="number"]:hover { border-color: var(--text-3); }
+  select:disabled, input:disabled { color: var(--text-3); background: var(--surface-2); }
+  input::placeholder { color: var(--text-3); }
+  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  legend { font-size: 12.5px; color: var(--text-2); padding: 0; margin-bottom: 4px; }
+  .choice { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; cursor: pointer; }
+  .choice input { margin: 0; width: 15px; height: 15px; }
+  .btn {
+    height: 32px; padding: 0 12px; border-radius: var(--radius-s);
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+    cursor: pointer; font-weight: 500;
+    transition: background var(--quick) var(--ease), border-color var(--quick) var(--ease), color var(--quick) var(--ease);
+  }
+  .btn:hover { background: var(--surface-2); border-color: var(--text-3); }
+  .btn:active { background: var(--border); }
+  .btn:disabled { cursor: default; color: var(--text-3); background: var(--surface-2); border-color: var(--border); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn-primary:active { background: var(--accent); }
+  .btn-primary:disabled { background: var(--accent-soft); border-color: var(--accent-soft); color: var(--text-2); }
+  .btn-small { height: 26px; padding: 0 9px; font-size: 12.5px; }
+  .actions { display: flex; gap: 8px; align-items: center; margin-top: 2px; }
+  .hint { font-size: 12.5px; color: var(--text-2); }
+  .alert {
+    margin-top: 8px; padding: 8px 10px; border-radius: var(--radius-s);
+    background: var(--err-bg); color: var(--err-text); font-size: 13px;
+  }
+
+  .tag {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 500; line-height: 1.5;
+    background: var(--tag-bg); color: var(--tag-text);
+  }
+  .tag-ok { background: var(--ok-bg); color: var(--ok-text); }
+  .tag-warn { background: var(--warn-bg); color: var(--warn-text); }
+  .tag-err { background: var(--err-bg); color: var(--err-text); }
+  .tag-accent { background: var(--accent-soft); color: var(--text); }
+
+  /* ---- assets ---------------------------------------------------------- */
+  .assets {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px;
+    max-height: 58vh; overflow: auto; padding: 2px;
+  }
+  .asset {
+    display: flex; flex-direction: column; gap: 5px;
+    color: inherit; text-decoration: none;
+    border-radius: 8px;
+  }
+  .asset-img {
+    display: block; aspect-ratio: 1; border-radius: 8px;
+    border: 1px solid var(--border);
+    background-color: var(--surface-2);
+    background-image: var(--img);
+    background-repeat: repeat;
+    background-size: 100% 100%;
+    image-rendering: auto;
+    transition: background-size 220ms var(--ease), border-color var(--quick) var(--ease);
+  }
+  .asset-img.is-sprite { background-color: var(--sprite-ground); }
+  .asset:hover .asset-img, .asset:focus-visible .asset-img { background-size: 50% 50%; border-color: var(--border-strong); }
+  .asset.is-loading .asset-img { background-image: none; animation: pulse 1.2s ease-in-out infinite; }
+  .asset.is-broken .asset-img { background-image: none; border-color: var(--err-text); }
+  .asset-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12.5px; }
+  .asset-name { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asset-sub { font-size: 11.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asset-sub code { font-size: 11px; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+  .empty { color: var(--text-2); font-size: 13px; padding: 10px 0 4px; }
+  .empty strong { color: var(--text); font-weight: 550; }
+
+  /* ---- world ----------------------------------------------------------- */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: var(--text-2); margin-bottom: 10px; }
+  .toolbar .field { flex-direction: row; align-items: center; gap: 6px; }
+  .toolbar select { height: 28px; }
+  .toolbar strong { color: var(--text); font-weight: 550; }
+  .map-wrap { position: relative; aspect-ratio: 4 / 3; min-height: 280px; max-height: 68vh; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--canvas-bg); }
+  #map { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+  #map:focus-visible { outline-offset: -2px; }
+  .map-empty {
+    position: absolute; inset: auto 12px 12px 12px; pointer-events: none;
+    padding: 8px 10px; border-radius: var(--radius-s);
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-2); font-size: 12.5px;
+  }
+  .map-empty strong { color: var(--text); font-weight: 550; }
+  .map-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 12.5px; color: var(--text-2); }
+  .legend { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .legend li { display: inline-flex; align-items: center; gap: 6px; }
+  .key { width: 14px; height: 14px; border-radius: 3px; display: inline-block; flex: none; }
+  .key-selected { border: 2px solid var(--accent); }
+  .key-prewarmed { border: 2px dashed var(--accent); }
+  .key-player { border: 2px solid var(--accent); border-radius: 50%; }
+  .key-ready { background: linear-gradient(135deg, transparent 50%, var(--canvas-ink) 50%); border: 1px solid var(--border-strong); }
+  .swatches { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 12.5px; color: var(--text-2); }
+  .swatches li { display: inline-flex; align-items: center; gap: 5px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, 0.18); display: inline-block; }
+  #world-status { font-size: 13px; color: var(--text-2); margin-top: 6px; min-height: 1.4em; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 12px; margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 12.5px; }
+  .stats div { display: flex; flex-direction: column; gap: 1px; }
+  .stats dt { color: var(--text-2); }
+  .stats dd { margin: 0; font-weight: 550; }
+
+  /* ---- bench ----------------------------------------------------------- */
+  .bench-meta { font-size: 12.5px; color: var(--text-2); margin-bottom: 8px; overflow-wrap: anywhere; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 550; color: var(--text-2); font-size: 12.5px; }
+  thead th { white-space: nowrap; }
+  td.num, th.num { text-align: right; }
+  td.num { font-weight: 550; }
+  tr:last-child td { border-bottom: 0; }
+  .unit { color: var(--text-2); font-weight: 400; font-size: 12px; }
+  .skeleton { display: flex; flex-direction: column; gap: 8px; }
+  .skeleton span { display: block; height: 14px; border-radius: 4px; background: var(--surface-2); animation: pulse 1.2s ease-in-out infinite; }
+  details { margin-top: 10px; font-size: 12.5px; color: var(--text-2); }
+  summary { cursor: pointer; color: var(--text); }
+  details ul { padding-left: 18px; margin-top: 6px; }
+  .bench-foot { margin-top: 10px; font-size: 12px; color: var(--text-3); }
+
+  /* ---- events ---------------------------------------------------------- */
+  .log { list-style: none; padding: 0; max-height: 40vh; overflow: auto; font-size: 12.5px; }
+  .log li { display: grid; grid-template-columns: 62px 64px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); align-items: baseline; }
+  .log li:last-child { border-bottom: 0; }
+  .log time { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; }
+  .log .tag { justify-self: start; }
+  .log span:last-child { overflow-wrap: anywhere; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#map">Skip to the world map</a>
+
+<header class="top">
+  <div class="brand">
+    <h1>RealmWeaver</h1>
+    <p>MADWE operator</p>
+  </div>
+  <ul class="status" aria-label="Bridge status">
+    <li><span class="dot" id="gen-dot" aria-hidden="true"></span><span id="gen-badge">Generator: checking…</span></li>
+    <li><span class="dot" id="ws-dot" aria-hidden="true"></span><span id="ws-badge">Events: connecting…</span></li>
+  </ul>
+</header>
+
+<main class="work">
+  <section class="panel" id="p-gen" aria-labelledby="h-gen">
+    <h2 id="h-gen">Generate</h2>
+    <form id="gen-form" class="form" novalidate>
+      <div class="field">
+        <label for="f-biome">Biome</label>
+        <select id="f-biome" name="biome" required></select>
+      </div>
+      <fieldset>
+        <legend>Kind</legend>
+        <label class="choice"><input type="radio" name="kind" value="texture" checked> Tile texture</label>
+        <label class="choice"><input type="radio" name="kind" value="sprite"> Prop sprite</label>
+      </fieldset>
+      <div class="field">
+        <label for="f-subject" id="l-subject">Tile class</label>
+        <select id="f-subject" name="subject" required></select>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="f-seed">Seed</label>
+          <input id="f-seed" name="seed" type="number" min="0" max="4294967295" step="1" value="0" required>
+        </div>
+        <div class="field">
+          <label for="f-size">Size</label>
+          <select id="f-size" name="size">
+            <option value="128">128 px</option>
+            <option value="256">256 px</option>
+            <option value="512" selected>512 px</option>
+            <option value="1024">1024 px</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-tier">Quality tier</label>
+        <select id="f-tier" name="tier">
+          <option value="draft" selected>draft (few steps)</option>
+          <option value="refine">refine (more steps)</option>
+        </select>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" id="gen-submit">Generate</button>
+        <button type="button" class="btn" id="gen-random">Random seed</button>
+      </div>
+      <p class="hint" id="gen-hint">Textures are seamless; sprites are keyed to a transparent background.</p>
+      <p class="alert" id="gen-error" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <section class="panel" id="p-assets" aria-labelledby="h-assets">
+    <div class="panel-head">
+      <h2 id="h-assets">Assets</h2>
+      <span class="hint" id="assets-count"></span>
+    </div>
+    <p class="empty" id="assets-empty"><strong>No assets yet.</strong> Generate one above, or request a chunk on the map; its textures appear here. Hover or focus a tile to see it repeated 2×2.</p>
+    <div class="assets" id="assets" aria-live="off"></div>
+  </section>
+
+  <section class="panel" id="p-world" aria-labelledby="h-world">
+    <h2 id="h-world">World</h2>
+    <div class="toolbar">
+      <span>Biome <strong id="world-biome">…</strong></span>
+      <span>Chunk <strong id="world-size">…</strong></span>
+      <span>Player <strong id="player-pos">…</strong></span>
+      <span class="field"><label for="w-tier">Request tier</label>
+        <select id="w-tier"><option value="draft" selected>draft</option><option value="refine">refine</option></select>
+      </span>
+    </div>
+    <div class="map-wrap">
+      <canvas id="map" tabindex="0" role="application" aria-label="World map" aria-describedby="world-help"></canvas>
+      <p class="map-empty" id="map-empty"><strong>No chunks yet.</strong> Click a cell to request that chunk, or press Enter for the chunk under the player.</p>
+    </div>
+    <p id="world-help" class="visually-hidden">Arrow keys move the player one tile; with Shift, one chunk. Enter or Space requests the chunk under the player. Clicking a cell requests that chunk.</p>
+    <div class="map-foot">
+      <ul class="legend" aria-label="Map legend">
+        <li><span class="key key-selected" aria-hidden="true"></span>selected chunk</li>
+        <li><span class="key key-prewarmed" aria-hidden="true"></span>prewarmed by the predictor</li>
+        <li><span class="key key-player" aria-hidden="true"></span>player</li>
+        <li><span class="key key-ready" aria-hidden="true"></span>corner mark: refined (ready)</li>
+      </ul>
+      <span class="hint">Arrows move the player (Shift: one chunk) · Enter requests</span>
+    </div>
+    <ul class="swatches" id="swatches" aria-label="Tile classes"></ul>
+    <p id="world-status" role="status" aria-live="polite">Pick a chunk to start.</p>
+    <dl class="stats" id="stats" aria-label="World statistics">
+      <div><dt>Chunks</dt><dd id="s-chunks">—</dd></div>
+      <div><dt>Assets</dt><dd id="s-assets">—</dd></div>
+      <div><dt>Cache</dt><dd id="s-cache">—</dd></div>
+      <div><dt>Prewarm hits / misses</dt><dd id="s-prewarm">—</dd></div>
+      <div><dt>Seam violations</dt><dd id="s-seams">—</dd></div>
+    </dl>
+  </section>
+
+  <section class="panel" id="p-bench" aria-labelledby="h-bench">
+    <div class="panel-head">
+      <h2 id="h-bench">Benchmark</h2>
+      <button type="button" class="btn btn-small" id="bench-reload">Reload</button>
+    </div>
+    <div id="bench-body" aria-busy="true">
+      <div class="skeleton" id="bench-skeleton" aria-hidden="true"><span style="width: 70%"></span><span></span><span></span><span style="width: 85%"></span></div>
+      <p class="empty" id="bench-empty" hidden><strong>No benchmark report yet.</strong> Run <code>realmweaver bench</code>; this panel reads the newest <code>reports/bench-*.json</code>.</p>
+      <div id="bench-report" hidden>
+        <p class="bench-meta" id="bench-meta"></p>
+        <table>
+          <thead><tr><th scope="col">Metric</th><th scope="col" class="num">Measured</th><th scope="col" class="num" title="Targets from the original pitch, carried in the report. They are goals, not measurements.">2025 target</th></tr></thead>
+          <tbody id="bench-rows"></tbody>
+        </table>
+        <details id="bench-notes" hidden><summary>Notes from the report</summary><ul id="bench-notes-list"></ul></details>
+        <p class="bench-foot">Every number here is read from the report file; nothing is typed into this page.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-events" aria-labelledby="h-events">
+    <div class="panel-head">
+      <h2 id="h-events">Events</h2>
+      <button type="button" class="btn btn-small" id="log-clear">Clear</button>
+    </div>
+    <p class="empty" id="log-empty">Waiting for events from <code>/events</code>.</p>
+    <ol class="log" id="log" aria-live="polite" aria-relevant="additions"></ol>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (sel) => document.querySelector(sel);
+  const el = {
+    genDot: $('#gen-dot'), genBadge: $('#gen-badge'), wsDot: $('#ws-dot'), wsBadge: $('#ws-badge'),
+    form: $('#gen-form'), biome: $('#f-biome'), subject: $('#f-subject'), subjectLabel: $('#l-subject'),
+    seed: $('#f-seed'), size: $('#f-size'), tier: $('#f-tier'), submit: $('#gen-submit'), random: $('#gen-random'),
+    genError: $('#gen-error'), assets: $('#assets'), assetsEmpty: $('#assets-empty'), assetsCount: $('#assets-count'),
+    worldBiome: $('#world-biome'), worldSize: $('#world-size'), playerPos: $('#player-pos'), wTier: $('#w-tier'),
+    wrap: document.querySelector('.map-wrap'), map: $('#map'), mapEmpty: $('#map-empty'), swatches: $('#swatches'),
+    worldStatus: $('#world-status'),
+    sChunks: $('#s-chunks'), sAssets: $('#s-assets'), sCache: $('#s-cache'), sPrewarm: $('#s-prewarm'), sSeams: $('#s-seams'),
+    benchBody: $('#bench-body'), benchSkeleton: $('#bench-skeleton'), benchEmpty: $('#bench-empty'), benchReport: $('#bench-report'),
+    benchMeta: $('#bench-meta'), benchRows: $('#bench-rows'), benchNotes: $('#bench-notes'), benchNotesList: $('#bench-notes-list'),
+    benchReload: $('#bench-reload'), log: $('#log'), logEmpty: $('#log-empty'), logClear: $('#log-clear'),
+  };
+  const state = {
+    chunkSize: 16, biome: 'forest', loaded: false, biomes: [], palettes: {},
+    chunks: new Map(), pending: new Set(), prewarmed: new Set(), selected: null, hover: null,
+    player: { x: 8, y: 8 }, playerPlaced: false, flashes: new Map(), assetIds: new Set(),
+    postInFlight: false, postQueued: null, backoff: 1000, ws: null,
+  };
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const key = (cx, cy) => `${cx},${cy}`;
+  const chunkOf = (t) => Math.floor(t / state.chunkSize);
+  const fmt = (v) => {
+    if (v === null || v === undefined || Number.isNaN(Number(v))) return '—';
+    const n = Number(v);
+    return Math.abs(n) >= 100 ? n.toFixed(0) : Math.abs(n) >= 10 ? n.toFixed(1) : n.toFixed(2);
+  };
+  const fmtBytes = (b) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(2)} GB` : `${(b / (1 << 20)).toFixed(1)} MB`);
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  async function api(path, body) {
+    const opts = body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) };
+    const r = await fetch(path, opts);
+    if (!r.ok) {
+      let detail = r.statusText || 'request failed';
+      try { const j = await r.json(); detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail); } catch (_) { /* no JSON body */ }
+      throw new Error(`HTTP ${r.status}: ${detail}`);
+    }
+    return r.json();
+  }
+
+  // ---- event log --------------------------------------------------------
+  const KIND_TAG = { ready: 'tag-ok', chunk: 'tag-ok', prewarm: 'tag-accent', generate: 'tag-accent', error: 'tag-err', hello: '', info: '' };
+  function log(kind, text) {
+    el.logEmpty.hidden = true;
+    const li = document.createElement('li');
+    const t = document.createElement('time');
+    const now = new Date();
+    t.dateTime = now.toISOString();
+    t.textContent = now.toTimeString().slice(0, 8);
+    const tag = document.createElement('span');
+    tag.className = `tag ${KIND_TAG[kind] || ''}`.trim();
+    tag.textContent = kind;
+    const msg = document.createElement('span');
+    msg.textContent = text;
+    li.append(t, tag, msg);
+    el.log.prepend(li);
+    while (el.log.children.length > 200) el.log.lastElementChild.remove();
+  }
+  el.logClear.addEventListener('click', () => { el.log.replaceChildren(); el.logEmpty.hidden = false; });
+
+  // ---- health, biomes, stats -------------------------------------------
+  async function loadHealth() {
+    try {
+      const h = await api('/health');
+      state.chunkSize = h.chunk_size;
+      state.biome = h.biome;
+      state.loaded = h.loaded;
+      if (!state.playerPlaced) { state.player = { x: h.chunk_size / 2, y: h.chunk_size / 2 }; state.playerPlaced = true; }
+      el.genBadge.textContent = `Generator: ${h.generator} on ${h.device}${h.loaded ? '' : ' (loads on first request)'}`;
+      el.genDot.dataset.state = h.loaded ? 'ok' : 'warn';
+      el.worldBiome.textContent = h.biome;
+      el.worldSize.textContent = `${h.chunk_size} × ${h.chunk_size} tiles`;
+      if ([...el.biome.options].some((o) => o.value === h.biome) && !el.biome.dataset.touched) { el.biome.value = h.biome; fillSubjects(); }
+      renderSwatches();
+      updatePlayerText();
+      layout(); draw();
+    } catch (e) {
+      el.genBadge.textContent = 'Generator: bridge unreachable';
+      el.genDot.dataset.state = 'err';
+      log('error', `GET /health: ${e.message}`);
+    }
+  }
+
+  async function loadBiomes() {
+    try {
+      const list = await api('/biomes');
+      state.biomes = list;
+      for (const b of list) state.palettes[b.name] = b.palette;
+      el.biome.replaceChildren(...list.map((b) => new Option(b.name, b.name)));
+      if (list.some((b) => b.name === state.biome)) el.biome.value = state.biome;
+      fillSubjects();
+      renderSwatches();
+      draw();
+    } catch (e) {
+      log('error', `GET /biomes: ${e.message}`);
+    }
+  }
+
+  function fillSubjects() {
+    const b = state.biomes.find((x) => x.name === el.biome.value);
+    const kind = el.form.elements.kind.value;
+    el.subjectLabel.textContent = kind === 'sprite' ? 'Prop' : 'Tile class';
+    const items = b ? (kind === 'sprite' ? b.props : b.tiles) : [];
+    const previous = el.subject.value;
+    el.subject.replaceChildren(...items.map((s) => new Option(s, s)));
+    if (items.includes(previous)) el.subject.value = previous;
+    el.subject.disabled = items.length === 0;
+  }
+
+  function renderSwatches() {
+    const palette = state.palettes[state.biome];
+    if (!palette) return;
+    el.swatches.replaceChildren(...Object.entries(palette).map(([cls, colours]) => {
+      const li = document.createElement('li');
+      const sw = document.createElement('span');
+      sw.className = 'swatch';
+      sw.style.background = colours[0];
+      sw.setAttribute('aria-hidden', 'true');
+      li.append(sw, cls);
+      return li;
+    }));
+  }
+
+  async function loadStats() {
+    try {
+      const s = await api('/stats');
+      const has = 'chunks' in s;
+      el.sChunks.textContent = has ? s.chunks : '—';
+      el.sAssets.textContent = has ? `${s.assets} (${s.resident_assets} resident)` : '—';
+      el.sCache.textContent = has ? `${fmtBytes(s.cache_bytes)} of ${fmtBytes(s.cache_cap_bytes)}` : '—';
+      el.sPrewarm.textContent = has ? `${s.prewarm_hits} / ${s.prewarm_misses}` : '—';
+      el.sSeams.textContent = has ? s.seam_violations : '—';
+    } catch (e) {
+      log('error', `GET /stats: ${e.message}`);
+    }
+  }
+
+  // ---- generate ---------------------------------------------------------
+  el.biome.addEventListener('change', () => { el.biome.dataset.touched = '1'; fillSubjects(); });
+  for (const radio of el.form.elements.kind) radio.addEventListener('change', fillSubjects);
+  el.random.addEventListener('click', () => { el.seed.value = Math.floor(Math.random() * 4294967296); el.seed.focus(); });
+
+  function setBusy(busy) {
+    el.submit.disabled = busy;
+    el.submit.textContent = busy ? (state.loaded ? 'Generating…' : 'Loading the generator…') : 'Generate';
+    el.form.setAttribute('aria-busy', String(busy));
+  }
+
+  el.form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const seed = Number.parseInt(el.seed.value, 10);
+    if (!el.subject.value) { showGenError('Pick a tile class or a prop first.'); return; }
+    if (!Number.isInteger(seed) || seed < 0) { showGenError('Seed must be a whole number of zero or more.'); el.seed.focus(); return; }
+    const tier = el.tier.value;
+    const body = { biome: el.biome.value, kind: el.form.elements.kind.value, subject: el.subject.value, size: Number(el.size.value), seed, tier, steps: tier === 'refine' ? 8 : 4 };
+    el.genError.hidden = true;
+    setBusy(true);
+    try {
+      const r = await api('/generate', body);
+      addAsset({ id: r.id, subject: body.subject, biome: body.biome, kind: body.kind, seed, tier, tileability: body.kind === 'texture' ? r.tileability : null, source: 'generate' });
+      log('generate', `${body.biome} ${body.subject} ${body.kind}, seed ${seed}, ${tier}: ${r.id}`);
+      if (!state.loaded) loadHealth();
+    } catch (e) {
+      showGenError(`Generation failed. ${e.message}`);
+      log('error', `POST /generate: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  });
+  function showGenError(text) { el.genError.textContent = text; el.genError.hidden = false; }
+
+  // ---- asset grid -------------------------------------------------------
+  function addAsset(a) {
+    if (state.assetIds.has(a.id)) return;
+    state.assetIds.add(a.id);
+    el.assetsEmpty.hidden = true;
+    el.assetsCount.textContent = `${state.assetIds.size} shown, newest first`;
+    const card = document.createElement('a');
+    card.className = 'asset is-loading';
+    card.href = `/asset/${a.id}.png`;
+    card.target = '_blank';
+    card.rel = 'noopener';
+    const where = a.source === 'generate' ? `${a.biome}, seed ${a.seed}, ${a.tier}` : `from chunk ${a.cx}, ${a.cy}`;
+    const seam = a.tileability === null || a.tileability === undefined ? '' : `, tileability ${fmt(a.tileability)}`;
+    card.setAttribute('aria-label', `${a.subject} ${a.kind}, ${where}${seam}. Opens the PNG.`);
+    const img = document.createElement('span');
+    img.className = `asset-img${a.kind === 'sprite' ? ' is-sprite' : ''}`;
+    img.setAttribute('aria-hidden', 'true');
+    const meta = document.createElement('span');
+    meta.className = 'asset-meta';
+    const name = document.createElement('span');
+    name.className = 'asset-name';
+    name.textContent = a.subject;
+    meta.append(name);
+    if (seam) {
+      const badge = document.createElement('span');
+      badge.className = 'tag';
+      badge.textContent = `seam ${fmt(a.tileability)}`;
+      badge.title = 'Tileability: gradient across the wrapped edges over the interior gradient. 1.00 means the seam is invisible.';
+      meta.append(badge);
+    } else if (a.source === 'generate') {
+      const badge = document.createElement('span');
+      badge.className = 'tag';
+      badge.textContent = 'sprite';
+      meta.append(badge);
+    }
+    const sub = document.createElement('span');
+    sub.className = 'asset-sub';
+    sub.textContent = where;
+    sub.title = a.id;
+    card.append(img, meta, sub);
+    const probe = new Image();
+    probe.onload = () => { card.style.setProperty('--img', `url("${card.href}")`); card.classList.remove('is-loading'); };
+    probe.onerror = () => { card.classList.remove('is-loading'); card.classList.add('is-broken'); card.title = 'The PNG could not be loaded.'; };
+    probe.src = card.href;
+    el.assets.prepend(card);
+  }
+
+  // ---- world map --------------------------------------------------------
+  const ctx = el.map.getContext('2d');
+  const view = { w: 0, h: 0, dpr: 1, tilePx: 5, cell: 80, ox: 0, oy: 0, centred: false };
+
+  function layout() {
+    const rect = el.wrap.getBoundingClientRect();
+    const w = Math.max(160, Math.floor(rect.width));
+    const h = Math.max(160, Math.floor(rect.height));
+    view.dpr = window.devicePixelRatio || 1;
+    el.map.width = Math.round(w * view.dpr);
+    el.map.height = Math.round(h * view.dpr);
+    const target = Math.min(112, Math.max(48, Math.floor(w / 9)));
+    view.tilePx = Math.max(2, Math.floor(target / state.chunkSize));
+    view.cell = view.tilePx * state.chunkSize;
+    if (!view.centred || w !== view.w || h !== view.h) {
+      view.ox = w / 2 - state.player.x * view.tilePx;
+      view.oy = h / 2 - state.player.y * view.tilePx;
+      view.centred = true;
+    }
+    view.w = w; view.h = h;
+  }
+
+  function keepPlayerVisible() {
+    const margin = view.cell;
+    const px = view.ox + state.player.x * view.tilePx;
+    const py = view.oy + state.player.y * view.tilePx;
+    if (px < margin) view.ox += margin - px;
+    if (px > view.w - margin) view.ox -= px - (view.w - margin);
+    if (py < margin) view.oy += margin - py;
+    if (py > view.h - margin) view.oy -= py - (view.h - margin);
+  }
+
+  function cellAt(clientX, clientY) {
+    const rect = el.map.getBoundingClientRect();
+    const x = clientX - rect.left - view.ox;
+    const y = clientY - rect.top - view.oy;
+    return [Math.floor(x / view.cell), Math.floor(y / view.cell)];
+  }
+
+  function draw() {
+    const { w, h, dpr, cell, tilePx, ox, oy } = view;
+    if (!w) return;
+    const c = { bg: cssVar('--canvas-bg'), grid: cssVar('--canvas-grid'), ink: cssVar('--canvas-ink'), halo: cssVar('--canvas-halo'), accent: cssVar('--accent') };
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = c.bg;
+    ctx.fillRect(0, 0, w, h);
+    const palette = state.palettes[state.biome] || {};
+    const cx0 = Math.floor(-ox / cell) - 1, cx1 = Math.ceil((w - ox) / cell) + 1;
+    const cy0 = Math.floor(-oy / cell) - 1, cy1 = Math.ceil((h - oy) / cell) + 1;
+    const now = performance.now();
+    let animating = false;
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const k = key(cx, cy);
+        const chunk = state.chunks.get(k);
+        const x0 = ox + cx * cell, y0 = oy + cy * cell;
+        if (chunk) {
+          const pal = state.palettes[chunk.biome] || palette;
+          const rows = chunk.tiles;
+          for (let y = 0; y < rows.length; y++) {
+            const row = rows[y];
+            for (let x = 0; x < row.length; x++) {
+              ctx.fillStyle = (pal[row[x]] || ['#8a8a8a'])[0];
+              ctx.fillRect(x0 + x * tilePx, y0 + y * tilePx, tilePx, tilePx);
+            }
+          }
+          const started = state.flashes.get(k);
+          if (started !== undefined) {
+            const age = now - started;
+            if (age < 320 && !reducedMotion.matches) {
+              ctx.fillStyle = c.halo;
+              ctx.globalAlpha = 0.6 * (1 - age / 320);
+              ctx.fillRect(x0, y0, cell, cell);
+              ctx.globalAlpha = 1;
+              animating = true;
+            } else {
+              state.flashes.delete(k);
+            }
+          }
+          if (chunk.state === 'ready') {
+            ctx.fillStyle = c.ink;
+            ctx.beginPath();
+            ctx.moveTo(x0 + cell - 1, y0 + 1);
+            ctx.lineTo(x0 + cell - 1, y0 + 11);
+            ctx.lineTo(x0 + cell - 11, y0 + 1);
+            ctx.closePath();
+            ctx.fill();
+          }
+        } else if (state.pending.has(k)) {
+          ctx.fillStyle = c.grid;
+          ctx.fillRect(x0 + 1, y0 + 1, cell - 2, cell - 2);
+          ctx.fillStyle = c.ink;
+          ctx.font = `500 11px ${cssVar('--font')}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('loading', x0 + cell / 2, y0 + cell / 2);
+        }
+      }
+    }
+    ctx.strokeStyle = c.grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let cx = cx0; cx <= cx1; cx++) { const x = Math.round(ox + cx * cell) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+    for (let cy = cy0; cy <= cy1; cy++) { const y = Math.round(oy + cy * cell) + 0.5; ctx.moveTo(0, y); ctx.lineTo(w, y); }
+    ctx.stroke();
+    const outline = (k, dash, colour, width) => {
+      const [cx, cy] = k.split(',').map(Number);
+      ctx.save();
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = width;
+      ctx.setLineDash(dash);
+      ctx.strokeRect(ox + cx * cell + width / 2 + 0.5, oy + cy * cell + width / 2 + 0.5, cell - width - 1, cell - width - 1);
+      ctx.restore();
+    };
+    for (const k of state.prewarmed) outline(k, [5, 4], c.accent, 2);
+    if (state.hover && !state.pending.has(state.hover)) outline(state.hover, [], c.ink, 1);
+    if (state.selected) outline(state.selected, [], c.accent, 2);
+    const px = ox + state.player.x * tilePx, py = oy + state.player.y * tilePx;
+    ctx.beginPath();
+    ctx.arc(px, py, 7, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = c.halo;
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = c.accent;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(px, py, 2, 0, Math.PI * 2);
+    ctx.fillStyle = c.accent;
+    ctx.fill();
+    if (animating) requestAnimationFrame(draw);
+  }
+
+  function updatePlayerText() {
+    const { x, y } = state.player;
+    el.playerPos.textContent = `tile ${x}, ${y} in chunk ${chunkOf(x)}, ${chunkOf(y)}`;
+  }
+
+  function setWorldStatus(text) { el.worldStatus.textContent = text; }
+
+  async function requestChunk(cx, cy, tier, { select = false, force = false } = {}) {
+    const k = key(cx, cy);
+    const have = state.chunks.get(k);
+    if (select) state.selected = k;
+    if (have && !force && (tier !== 'refine' || have.state === 'ready')) {
+      setWorldStatus(describe(have));
+      draw();
+      return have;
+    }
+    if (state.pending.has(k)) { draw(); return null; }
+    state.pending.add(k);
+    draw();
+    setWorldStatus(`Requesting chunk ${cx}, ${cy} (${tier})…`);
+    try {
+      const j = await api(`/chunk/${cx}/${cy}?tier=${encodeURIComponent(tier)}`);
+      state.chunks.set(k, j);
+      state.flashes.set(k, performance.now());
+      el.mapEmpty.hidden = true;
+      log('chunk', `chunk ${cx}, ${cy} ${j.state}, ${Object.keys(j.assets).length} tile classes`);
+      for (const [cls, id] of Object.entries(j.assets)) addAsset({ id, subject: cls, biome: j.biome, kind: 'texture', source: 'chunk', cx, cy });
+      setWorldStatus(describe(j));
+      if (!state.loaded) loadHealth();
+      return j;
+    } catch (e) {
+      log('error', `GET /chunk/${cx}/${cy}: ${e.message}`);
+      setWorldStatus(`Chunk ${cx}, ${cy} failed. ${e.message}`);
+      return null;
+    } finally {
+      state.pending.delete(k);
+      draw();
+      loadStats();
+    }
+  }
+
+  function describe(j) {
+    const tag = state.prewarmed.has(key(j.cx, j.cy)) ? ', prewarmed' : '';
+    return `Chunk ${j.cx}, ${j.cy}: ${j.state}${tag}. Tile classes: ${Object.keys(j.assets).join(', ')}.`;
+  }
+
+  function movePlayer(dx, dy) {
+    state.player = { x: state.player.x + dx, y: state.player.y + dy };
+    keepPlayerVisible();
+    updatePlayerText();
+    draw();
+    schedulePlayerPost();
+  }
+
+  function schedulePlayerPost() {
+    state.postQueued = { x: state.player.x, y: state.player.y };
+    if (!state.postInFlight) flushPlayerPost();
+  }
+
+  async function flushPlayerPost() {
+    const pos = state.postQueued;
+    state.postQueued = null;
+    if (!pos) return;
+    state.postInFlight = true;
+    try {
+      const r = await api('/player', pos);
+      for (const [cx, cy] of r.prewarmed) {
+        state.prewarmed.add(key(cx, cy));
+        log('prewarm', `chunk ${cx}, ${cy} generated ahead of the player`);
+        requestChunk(cx, cy, 'draft', { force: true });
+      }
+      if (r.prewarmed.length === 0 && !state.loaded) loadHealth();
+      loadStats();
+    } catch (e) {
+      log('error', `POST /player: ${e.message}`);
+    } finally {
+      state.postInFlight = false;
+      if (state.postQueued) flushPlayerPost();
+    }
+  }
+
+  el.map.addEventListener('click', (ev) => {
+    const [cx, cy] = cellAt(ev.clientX, ev.clientY);
+    el.map.focus({ preventScroll: true });
+    requestChunk(cx, cy, el.wTier.value, { select: true });
+  });
+  el.map.addEventListener('mousemove', (ev) => {
+    const [cx, cy] = cellAt(ev.clientX, ev.clientY);
+    const k = key(cx, cy);
+    if (k !== state.hover) {
+      state.hover = k;
+      const have = state.chunks.get(k);
+      el.map.title = have ? `Chunk ${cx}, ${cy}: ${have.state}` : `Chunk ${cx}, ${cy}: not generated. Click to request.`;
+      draw();
+    }
+  });
+  el.map.addEventListener('mouseleave', () => { state.hover = null; el.map.removeAttribute('title'); draw(); });
+  el.map.addEventListener('keydown', (ev) => {
+    const step = ev.shiftKey ? state.chunkSize : 1;
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[ev.key]) {
+      ev.preventDefault();
+      movePlayer(...moves[ev.key]);
+    } else if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      requestChunk(chunkOf(state.player.x), chunkOf(state.player.y), el.wTier.value, { select: true });
+    }
+  });
+  new ResizeObserver(() => { layout(); draw(); }).observe(el.wrap);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+
+  // ---- benchmark --------------------------------------------------------
+  const ROWS = [
+    ['Latency p50', 's per asset', (r) => r.latency_s && r.latency_s.p50, (t) => t.s_per_asset],
+    ['Latency p95', 's per asset', (r) => r.latency_s && r.latency_s.p95, () => undefined],
+    ['Throughput', 'assets per minute', (r) => r.assets_per_min, (t) => t.textures_per_min],
+    ['Tileable share', '% of assets', (r) => r.tileability && r.tileability.share_leq_1_2 * 100, (t) => t.tileable_pct],
+    ['Style consistency', 'cosine gap', (r) => r.style_consistency, (t) => t.style],
+    ['Peak VRAM', 'GB allocated', (r) => r.vram && r.vram.peak_allocated_gb, (t) => t.vram_gb],
+    ['FID', 'against the repo dataset', (r) => r.fid_kid && r.fid_kid.fid, (t) => t.fid],
+  ];
+
+  async function loadReport() {
+    el.benchBody.setAttribute('aria-busy', 'true');
+    el.benchSkeleton.hidden = false;
+    el.benchEmpty.hidden = true;
+    el.benchReport.hidden = true;
+    try {
+      const r = await api('/report');
+      if (!r.available) {
+        el.benchEmpty.innerHTML = '<strong>No benchmark report yet.</strong> Run <code>realmweaver bench</code>; this panel reads the newest <code>reports/bench-*.json</code>.';
+        el.benchEmpty.hidden = false;
+        return;
+      }
+      renderReport(r);
+    } catch (e) {
+      el.benchEmpty.textContent = `The report could not be read. ${e.message}`;
+      el.benchEmpty.hidden = false;
+      log('error', `GET /report: ${e.message}`);
+    } finally {
+      el.benchSkeleton.hidden = true;
+      el.benchBody.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  function renderReport(r) {
+    const env = r.env || {}, params = r.params || {}, targets = r.targets_2025 || {};
+    const meta = [r.file, r.timestamp, env.generator && `${env.generator} generator`, env.gpu, params.n !== undefined && `n = ${params.n}`, params.seed !== undefined && `seed ${params.seed}`, Array.isArray(params.biomes) && params.biomes.join(', ')].filter(Boolean);
+    el.benchMeta.textContent = meta.join(' · ');
+    el.benchRows.replaceChildren(...ROWS.map(([label, unit, measured, target]) => {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.scope = 'row';
+      th.append(label, ' ');
+      const u = document.createElement('span');
+      u.className = 'unit';
+      u.textContent = unit;
+      th.append(u);
+      const m = document.createElement('td');
+      m.className = 'num';
+      m.textContent = fmt(measured(r));
+      const t = document.createElement('td');
+      t.className = 'num';
+      t.textContent = fmt(target(targets));
+      tr.append(th, m, t);
+      return tr;
+    }));
+    const notes = Array.isArray(r.notes) ? r.notes : [];
+    el.benchNotes.hidden = notes.length === 0;
+    el.benchNotesList.replaceChildren(...notes.map((n) => { const li = document.createElement('li'); li.textContent = String(n); return li; }));
+    el.benchReport.hidden = false;
+  }
+  el.benchReload.addEventListener('click', loadReport);
+
+  // ---- websocket --------------------------------------------------------
+  function setWs(stateName, text) {
+    el.wsDot.dataset.state = stateName;
+    el.wsBadge.textContent = `Events: ${text}`;
+  }
+  function connect() {
+    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/events`;
+    let ws;
+    try { ws = new WebSocket(url); } catch (e) { setWs('err', 'unavailable'); return; }
+    state.ws = ws;
+    setWs('warn', 'connecting…');
+    ws.onopen = () => { setWs('ok', 'live'); state.backoff = 1000; };
+    ws.onmessage = (ev) => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch (_) { return; }
+      handleEvent(m);
+    };
+    ws.onclose = () => {
+      setWs('err', `offline, retrying in ${Math.round(state.backoff / 1000)} s`);
+      setTimeout(connect, state.backoff);
+      state.backoff = Math.min(state.backoff * 2, 15000);
+    };
+    ws.onerror = () => ws.close();
+  }
+  function handleEvent(m) {
+    if (m.type === 'hello') { log('hello', 'bridge says hello'); return; }
+    if (m.type === 'ready' && Array.isArray(m.chunk)) {
+      const [cx, cy] = m.chunk;
+      const list = Array.isArray(m.assetList) ? m.assetList : [];
+      log('ready', `chunk ${cx}, ${cy} ready with ${list.length} assets`);
+      const have = state.chunks.get(key(cx, cy));
+      const changed = !have || JSON.stringify(have.assets) !== JSON.stringify(m.assets || {});
+      if (changed) requestChunk(cx, cy, 'draft', { force: true });
+      return;
+    }
+    log('info', JSON.stringify(m));
+  }
+
+  // ---- boot -------------------------------------------------------------
+  layout();
+  draw();
+  updatePlayerText();
+  Promise.allSettled([loadHealth(), loadBiomes(), loadReport(), loadStats()]).then(connect);
+  setInterval(() => { if (!document.hidden) loadStats(); }, 5000);
+})();
+</script>
+</body>
+</html>
