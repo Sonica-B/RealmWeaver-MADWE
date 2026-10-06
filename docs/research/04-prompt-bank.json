@@ -1,0 +1,86 @@
+{
+  "texture_prompts": {
+    "fantasy_forest": {
+      "ancient_bark": "ultra detailed seamless tileable ancient oak tree bark texture, deeply carved grooves and ridges, intricate lichen patches in emerald green and gray, weathered wood grain with age rings visible, moss growing in crevices, tiny mushrooms sprouting, dappled sunlight creating subtle shadows, photorealistic 4K game texture, PBR material with normal mapping details, high frequency detail preservation",
+      "enchanted_leaves": "magical forest canopy texture seamless tileable, overlapping maple oak and birch leaves, bioluminescent veins glowing softly blue and purple, dewdrops catching rainbow light, fairy dust particles, translucent leaves showing intricate vein patterns, autumn colors transitioning from green to gold to crimson, volumetric light rays filtering through, ultra high detail foliage texture",
+      "mystical_moss": "fantasy glowing moss texture seamless pattern, bioluminescent spores emitting soft cyan light, velvety micro vegetation, tiny magical flowers blooming, moisture droplets refracting light, phosphorescent patches, deep forest floor coverage, intricate fractal growth patterns, subsurface scattering effect, game ready PBR texture"
+    },
+    "cyberpunk_city": {
+      "neon_metal": "futuristic chrome metal panel texture seamless, holographic iridescent surface, scratches revealing circuitry underneath, neon pink and cyan light reflections, rain droplets beading on surface, corporate logos etched in, warning labels in Japanese, rust patches with electrical burns, industrial wear marks, ray traced reflections, 4K game texture",
+      "tech_wall": "cyberpunk building facade texture tileable, LED strip lights running through concrete, exposed fiber optic cables glowing data streams, graffiti tags with UV reactive paint, moisture stains from acid rain, ventilation grates with steam, holographic advertisement residue, bullet holes and plasma burns, dystopian urban decay, photorealistic detail",
+      "circuit_floor": "high tech circuit board floor texture seamless, multilayer PCB with gold traces, SMD components, cooling gel pools, data flow visualization, quantum processors glowing, diagnostic LEDs blinking patterns, carbon fiber reinforcement mesh, anti-static coating with wear patterns, industrial sci-fi aesthetic"
+    },
+    "horror_mansion": {
+      "blood_wall": "disturbing mansion wall texture seamless, old wallpaper peeling revealing blood stains underneath, scratch marks from desperate fingers, mold growing in organic patterns, mysterious symbols carved deep, rust from old nails, cobwebs in corners, Victorian damask pattern corrupted, psychological horror atmosphere, desaturated colors with deep reds",
+      "cursed_wood": "haunted floorboard texture tileable, aged dark oak with supernatural wear, ghostly footprints burned in, strange liquids seeping between boards, occult symbols carved by unknown hands, wood grain forming screaming faces, splinters that seem to move, creaking under invisible weight, horror game aesthetic",
+      "nightmare_fabric": "possessed curtain fabric texture seamless, heavy velvet with moving patterns, faces appearing in the weave, blood seeping through fibers, moth holes forming pentagram shapes, dust particles floating eerily, shadows that don't match light sources, Victorian gothic horror style"
+    },
+    "casual_bright": {
+      "candy_surface": "cheerful candy shop floor texture seamless tileable, glossy checkered pattern in bubblegum pink and mint green, sugar crystal sparkles, lollipop swirl patterns, gummy bear imprints, sprinkles scattered about, high saturation colors, soft shadows, mobile game optimized, family friendly aesthetic",
+      "toy_blocks": "playful wooden toy block texture seamless, primary colors red blue yellow green, soft rounded edges, child safe design, alphabet letters embossed, number stamps, worn paint showing wood grain, finger smudges, wholesome nostalgic feeling, casual game art style",
+      "cloud_pattern": "dreamy sky texture tileable, fluffy cumulus clouds in pastel blue sky, rainbow gradients at edges, cartoon style rendering, paper airplane trails, floating bubbles with rainbow reflections, sun rays creating god rays effect, optimized for mobile performance"
+    },
+    "retro_arcade": {
+      "pixel_grid": "authentic arcade cabinet side art texture seamless, 80s neon geometric patterns, scanline effects, CRT phosphor glow simulation, vector graphics inspired designs, chrome gradients, laser grid backgrounds, synthwave color palette hot pink cyan yellow, grain and noise for authenticity",
+      "arcade_floor": "retro arcade carpet texture tileable, cosmic bowling alley pattern, blacklight reactive designs, geometric shapes in neon colors, worn pathways from foot traffic, spilled soda stains, gum spots, 90s aesthetic, nostalgic pattern design",
+      "cabinet_metal": "arcade machine metal texture seamless, brushed aluminum with finger prints, coin slot wear marks, button indentations, speaker grill patterns, scratches from keys, sticker residue, authentic wear and patina, industrial gaming aesthetic"
+    },
+    "underwater_depths": {
+      "coral_reef": "vibrant coral reef texture seamless tileable, brain coral staghorn and table coral varieties, anemones swaying with current, clownfish hiding spots, barnacles and sea urchins, bioluminescent organisms, caustic light patterns dancing, rich biodiversity, photorealistic underwater photography style",
+      "ocean_sand": "deep sea floor sand texture seamless, ripples from underwater currents, seashell fragments, starfish imprints, seaweed debris, light refracting through water creating moving patterns, tiny bubbles rising, marine sediment layers, underwater atmosphere",
+      "kelp_forest": "dense kelp forest texture tileable, giant kelp fronds swaying, sunlight filtering creating dappled shadows, small fish darting between stalks, sea otters resting spots, underwater fog effect, rich green and brown tones, dynamic underwater ecosystem"
+    },
+    "steampunk_industrial": {
+      "brass_gears": "intricate steampunk brass mechanism texture seamless, interlocking gears and cogs, steam valve handles, pressure gauges with cracked glass, copper pipes with verdigris patina, rivets and bolts, oil stains and grease marks, Victorian industrial aesthetic, mechanical complexity",
+      "leather_metal": "steampunk leather and metal texture tileable, aged brown leather with brass studs, buckles and straps, stitching patterns, wear marks from use, metal plates with engraved serial numbers, steam punk goggles imprint, industrial revolution era styling",
+      "steam_pipes": "complex pipe system texture seamless, copper and brass pipes interconnected, steam vents releasing pressure, valve wheels, temperature gauges, condensation droplets, rust and patina, industrial maze of plumbing, Victorian engineering aesthetic"
+    },
+    "post_apocalypse": {
+      "rusted_metal": "devastated wasteland metal texture seamless, heavy rust and corrosion, bullet holes and shrapnel damage, makeshift repairs with scrap, radiation warning signs faded, blood stains and burn marks, structural collapse evidence, harsh survival environment",
+      "toxic_ground": "contaminated wasteland ground texture tileable, cracked earth with toxic waste seepage, mutated plant growth, radiation crystals forming, debris from civilization, ash and fallout dust, tire tracks from survivor vehicles, desolate atmosphere",
+      "bunker_concrete": "nuclear bunker wall texture seamless, reinforced concrete with rebar exposed, blast damage and scorch marks, emergency instructions stenciled, water stains and mold, scratched countdown marks, survival shelter aesthetic"
+    }
+  },
+  "sprite_prompts": {
+    "pixel_characters": {
+      "8bit_hero": "8-bit pixel art RPG hero sprite, 32x32 pixels, limited NES color palette, sword and shield equipped, idle animation frame, clear pixel boundaries, no anti-aliasing, authentic retro constraints, white background for transparency, game ready sprite sheet format",
+      "16bit_mage": "16-bit SNES style wizard sprite, 64x64 pixels, flowing robes with detailed shading, magical staff with glowing orb, spell casting pose, expanded color palette, subtle dithering for gradients, professional pixel art techniques",
+      "modern_pixel": "modern indie pixel art character, 128x128 pixels, detailed animations, dynamic lighting effects on pixels, contemporary color theory, sub-pixel animation techniques, mix of retro aesthetic with modern sensibilities"
+    },
+    "hand_drawn_characters": {
+      "ink_warrior": "hand-drawn ink illustration warrior character, bold brush strokes, dynamic action pose, flowing cape and hair, crosshatching for shadows, expressive line weight variation, scanned traditional art aesthetic, high contrast black and white with red accents",
+      "watercolor_elf": "ethereal elf character painted in watercolor style, soft color bleeds, translucent clothing layers, delicate features, botanical elements in hair, dreamy atmosphere, traditional media texture, white background",
+      "sketch_rogue": "rough pencil sketch style rogue character, construction lines visible, dynamic gesture drawing, daggers and throwing knives, hood casting shadow over face, energetic line work, concept art quality"
+    },
+    "vector_characters": {
+      "minimal_knight": "minimalist vector art knight, geometric shapes only, limited color palette, bold silhouette, modern flat design principles, scalable graphics quality, perfect for mobile games, clean composition",
+      "gradient_ranger": "vector ranger with subtle gradients, bow drawn in action pose, layered clothing design, nature-inspired color scheme, smooth curves and sharp angles balanced, professional vector illustration",
+      "iso_soldier": "isometric vector soldier sprite, 3/4 view perspective, modular armor pieces, color-coded team variations possible, perfect proportions for tile-based games, strategic game aesthetic"
+    },
+    "fantasy_items": {
+      "legendary_sword": "epic flaming longsword game item, ornate cross-guard with runic inscriptions, blade emanating magical fire, dragon motifs on hilt, glowing gems embedded, particle effects for flames, legendary rarity aura, detailed metalwork, center composition on transparent background",
+      "healing_potion": "major healing potion bottle, swirling red liquid with golden sparkles, cork sealed with wax, glass refracting light beautifully, medieval bottle shape, magical glow from within, bubble effects, item rarity indicator",
+      "artifact_amulet": "ancient magical amulet, intricate Celtic knot design, central gem pulsating with power, weathered gold chain, mystical symbols etched, soft magical aura, lore-rich appearance, museum quality detail"
+    },
+    "sci_fi_items": {
+      "plasma_rifle": "futuristic plasma rifle weapon sprite, sleek design with glowing energy cores, holographic sight, heat dissipation vents, alien technology aesthetic, neon accent lights, modular attachments visible, high-tech materials",
+      "nano_medkit": "advanced medical nanite injector, transparent canister showing swirling nanobots, digital display showing vitals, ergonomic grip design, sterile white with medical crosses, soft blue glow, emergency red accents",
+      "quantum_key": "quantum encryption key device, crystalline structure with data streams inside, impossible geometry, holographic interface projecting, chrome and glass construction, particle effects, cyberpunk aesthetic"
+    },
+    "magical_effects": {
+      "fire_burst": "magical fire explosion sprite sheet, 8 frame sequence, dynamic flame shapes, orange to yellow to white heat gradient, smoke wisps, ember particles, impact shockwave, spell effect quality, transparent background",
+      "ice_shatter": "frost spell impact effect, crystalline ice formations shattering, blue to white gradient, sharp geometric fragments, freezing mist, magical snowflakes, dynamic motion blur, frame-by-frame animation ready",
+      "lightning_strike": "electric spell effect sprite, branching lightning bolt, bright white core with purple edges, electrical arcs, ground impact scorch, atmospheric glow, energy crackling, particle systems included"
+    },
+    "environmental_effects": {
+      "toxic_cloud": "poisonous gas cloud sprite, sickly green wisps, bubbling toxic particles, semi-transparent layers, organic flowing shapes, hazard warning aesthetic, animated swirling motion, environmental danger",
+      "portal_vortex": "dimensional portal effect, swirling energy vortex, space-time distortion, multiple color layers, particle streams, reality warping at edges, mystical transportation, animated sequence ready",
+      "explosion_dust": "realistic explosion with debris, dust cloud expansion, rock fragments, shockwave distortion, fire at center transitioning to smoke, military/realistic style, multiple animation frames"
+    },
+    "game_ui": {
+      "health_bar": "RPG health bar UI element, ornate frame design, red fill with gradient, decorative end caps, empty state included, damage animation ready, medieval fantasy styling, multiple size variations",
+      "ability_button": "skill ability button frame, circular design with rune border, empty center for ability icon, cooldown sweep indicator, pressed state variation, magical glow effect, MOBA game style",
+      "dialogue_box": "RPG dialogue window frame, wooden texture with metal corners, parchment background, decorative Celtic patterns, name plate area, semi-transparent option, visual novel quality"
+    }
+  }
+}

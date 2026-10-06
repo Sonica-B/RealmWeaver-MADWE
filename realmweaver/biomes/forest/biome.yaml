@@ -1,0 +1,30 @@
+name: forest
+style: "top-down 2D game texture, painterly fantasy forest, soft diffuse light, rich detail"
+negative: "blurry, text, watermark, border, frame, seam, low quality, photo"
+coherence_threshold: 0.55
+lora: null
+legend: {g: grass, d: dirt, w: water, s: shore, t: tree, r: rock}
+tiles:
+  grass: {prompt: "lush green grass with small clover", palette: ["#3f7d3a", "#5aa04a", "#2e5f2b"]}
+  dirt:  {prompt: "packed forest soil with pebbles and roots", palette: ["#6b4f2e", "#8a6a40", "#55401f"]}
+  water: {prompt: "calm clear forest stream water with gentle ripples", palette: ["#2c6f9e", "#3f8fc4", "#245a80"]}
+  shore: {prompt: "muddy river bank with wet sand and small stones", palette: ["#9c8b63", "#7d6d4c", "#b3a27a"]}
+  tree:  {prompt: "dense forest canopy seen from above, layered leaves", palette: ["#1f4d1e", "#2f6b2b", "#173a16"]}
+  rock:  {prompt: "mossy grey granite boulders", palette: ["#777777", "#5f6b5a", "#8e8e8e"]}
+props:
+  mushroom: "a red-capped forest mushroom, game prop, centered, white background"
+  log: "a fallen mossy log, game prop, centered, white background"
+  fern: "a green fern plant, game prop, centered, white background"
+map: |
+  ttttggggggtt
+  ttggggdgggtt
+  tggggdddggtt
+  gggsddddsggg
+  ggsswwwssggg
+  ggswwwwwsggg
+  ggsswwwssggg
+  gggssssrrggg
+  ggggggrrrggg
+  tgggggrrgggt
+  ttggggggggtt
+  ttttggggtttt

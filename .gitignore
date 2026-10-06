@@ -92,3 +92,10 @@ scripts/keys.txt
 scripts/keys.txt
 scripts/keys.txt
 scripts/keys.txt
+
+# RealmWeaver 2026
+models/
+brag-output*/
+tmp_world.json
+.impeccable/
+reports/*.tmp
