@@ -1,0 +1,699 @@
+{
+ "unet": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "trellis_2_int8_convrot.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "clipv": {
+  "class_type": "CLIPVisionLoader",
+  "inputs": {
+   "clip_name": "dino_v3_vit_l.safetensors"
+  }
+ },
+ "vae_shape": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "trellis_2_shape_vae_bf16.safetensors"
+  }
+ },
+ "vae_tex": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "trellis_2_texture_vae_bf16.safetensors"
+  }
+ },
+ "img": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": "forest_mushroom_s3.png"
+  }
+ },
+ "probe0": {
+  "class_type": "VRAMPeakReset",
+  "inputs": {
+   "value": [
+    "img",
+    0
+   ],
+   "tag": "mushroom-cu128-1791327029"
+  }
+ },
+ "inv": {
+  "class_type": "InvertMask",
+  "inputs": {
+   "mask": [
+    "img",
+    1
+   ]
+  }
+ },
+ "bg_model": {
+  "class_type": "LoadBackgroundRemovalModel",
+  "inputs": {
+   "bg_removal_name": "birefnet.safetensors"
+  }
+ },
+ "bg_mask": {
+  "class_type": "RemoveBackground",
+  "inputs": {
+   "bg_removal_model": [
+    "bg_model",
+    0
+   ],
+   "image": [
+    "probe0",
+    0
+   ]
+  }
+ },
+ "mask_img": {
+  "class_type": "MaskToImage",
+  "inputs": {
+   "mask": [
+    "bg_mask",
+    0
+   ]
+  }
+ },
+ "save_mask": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "mask_img",
+    0
+   ],
+   "filename_prefix": "spike/mushroom_mask"
+  }
+ },
+ "crop": {
+  "class_type": "ImageCropToMask",
+  "inputs": {
+   "images": [
+    "probe0",
+    0
+   ],
+   "masks": [
+    "bg_mask",
+    0
+   ],
+   "width": 1024,
+   "height": 1024,
+   "pad_factor": 1.0,
+   "grow_mask": 0,
+   "background": "#000000"
+  }
+ },
+ "save_crop": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "crop",
+    0
+   ],
+   "filename_prefix": "spike/mushroom_input"
+  }
+ },
+ "cond": {
+  "class_type": "Trellis2Conditioning",
+  "inputs": {
+   "clip_vision_model": [
+    "clipv",
+    0
+   ],
+   "image": [
+    "crop",
+    0
+   ]
+  }
+ },
+ "cfg_ss": {
+  "class_type": "CFGOverride",
+  "inputs": {
+   "model": [
+    "unet",
+    0
+   ],
+   "cfg": 1.0,
+   "start_percent": 0.667,
+   "end_percent": 1.0
+  }
+ },
+ "rescale_ss": {
+  "class_type": "RescaleCFG",
+  "inputs": {
+   "model": [
+    "cfg_ss",
+    0
+   ],
+   "multiplier": 0.7
+  }
+ },
+ "ms_ss": {
+  "class_type": "ModelSamplingSD3",
+  "inputs": {
+   "model": [
+    "rescale_ss",
+    0
+   ],
+   "shift": 5.0
+  }
+ },
+ "cfg_shape": {
+  "class_type": "CFGOverride",
+  "inputs": {
+   "model": [
+    "unet",
+    0
+   ],
+   "cfg": 1.0,
+   "start_percent": 0.769,
+   "end_percent": 1.0
+  }
+ },
+ "rescale_shape": {
+  "class_type": "RescaleCFG",
+  "inputs": {
+   "model": [
+    "cfg_shape",
+    0
+   ],
+   "multiplier": 0.5
+  }
+ },
+ "lat_ss": {
+  "class_type": "EmptyTrellis2LatentStructure",
+  "inputs": {
+   "batch_size": 1
+  }
+ },
+ "ks_ss": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "ms_ss",
+    0
+   ],
+   "seed": 42,
+   "steps": 12,
+   "cfg": 7.5,
+   "sampler_name": "euler",
+   "scheduler": "normal",
+   "positive": [
+    "cond",
+    0
+   ],
+   "negative": [
+    "cond",
+    1
+   ],
+   "latent_image": [
+    "lat_ss",
+    0
+   ],
+   "denoise": 1.0
+  }
+ },
+ "dec_ss": {
+  "class_type": "VaeDecodeStructureTrellis2",
+  "inputs": {
+   "samples": [
+    "ks_ss",
+    0
+   ],
+   "vae": [
+    "vae_shape",
+    0
+   ],
+   "resolution": "32"
+  }
+ },
+ "shape_stage": {
+  "class_type": "Trellis2ShapeStage",
+  "inputs": {
+   "positive": [
+    "cond",
+    0
+   ],
+   "negative": [
+    "cond",
+    1
+   ],
+   "voxel": [
+    "dec_ss",
+    0
+   ]
+  }
+ },
+ "ks_shape": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "rescale_shape",
+    0
+   ],
+   "seed": 42,
+   "steps": 20,
+   "cfg": 7.5,
+   "sampler_name": "euler",
+   "scheduler": "normal",
+   "positive": [
+    "shape_stage",
+    0
+   ],
+   "negative": [
+    "shape_stage",
+    1
+   ],
+   "latent_image": [
+    "shape_stage",
+    2
+   ],
+   "denoise": 1.0
+  }
+ },
+ "dec_shape": {
+  "class_type": "VaeDecodeShapeTrellis",
+  "inputs": {
+   "samples": [
+    "ks_shape",
+    0
+   ],
+   "vae": [
+    "vae_shape",
+    0
+   ]
+  }
+ },
+ "info_raw": {
+  "class_type": "GetMeshInfo",
+  "inputs": {
+   "mesh": [
+    "dec_shape",
+    0
+   ]
+  }
+ },
+ "tex_stage": {
+  "class_type": "Trellis2TextureStage",
+  "inputs": {
+   "positive": [
+    "shape_stage",
+    0
+   ],
+   "negative": [
+    "shape_stage",
+    1
+   ],
+   "shape_latent": [
+    "ks_shape",
+    0
+   ]
+  }
+ },
+ "ks_tex": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "unet",
+    0
+   ],
+   "seed": 42,
+   "steps": 12,
+   "cfg": 1.0,
+   "sampler_name": "euler",
+   "scheduler": "normal",
+   "positive": [
+    "tex_stage",
+    0
+   ],
+   "negative": [
+    "tex_stage",
+    1
+   ],
+   "latent_image": [
+    "tex_stage",
+    2
+   ],
+   "denoise": 1.0
+  }
+ },
+ "dec_tex": {
+  "class_type": "VaeDecodeTextureTrellis",
+  "inputs": {
+   "samples": [
+    "ks_tex",
+    0
+   ],
+   "vae": [
+    "vae_tex",
+    0
+   ],
+   "shape_subdivides": [
+    "dec_shape",
+    1
+   ]
+  }
+ },
+ "remesh": {
+  "class_type": "RemeshMesh",
+  "inputs": {
+   "mesh": [
+    "info_raw",
+    0
+   ],
+   "resolution": 768,
+   "sign_mode": "udf",
+   "sign_mode.qef": false,
+   "sign_mode.drop_inverted_components": false,
+   "sign_mode.drop_enclosed_components": false,
+   "band": 1.0,
+   "project_back": 0.0,
+   "fix_poles": false,
+   "smooth_iters": 20,
+   "drop_small_components": 0.01,
+   "precluster_max_verts": 20000000
+  }
+ },
+ "decim": {
+  "class_type": "DecimateMesh",
+  "inputs": {
+   "mesh": [
+    "remesh",
+    0
+   ],
+   "target_face_count": 700000,
+   "placement_mode": "midpoint"
+  }
+ },
+ "smooth1": {
+  "class_type": "MeshSmoothNormals",
+  "inputs": {
+   "mesh": [
+    "decim",
+    0
+   ],
+   "crease_angle": 180.0
+  }
+ },
+ "unwrap": {
+  "class_type": "UnwrapMesh",
+  "inputs": {
+   "mesh": [
+    "smooth1",
+    0
+   ],
+   "segmenter": "pec",
+   "resolution": 4096,
+   "padding": 1,
+   "weld_distance": 0.0002
+  }
+ },
+ "bake_tex": {
+  "class_type": "BakeTextureFromVoxel",
+  "inputs": {
+   "mesh": [
+    "unwrap",
+    0
+   ],
+   "voxel_colors": [
+    "dec_tex",
+    0
+   ],
+   "texture_size": 4096,
+   "reference_mesh": [
+    "dec_shape",
+    0
+   ]
+  }
+ },
+ "bake_nrm": {
+  "class_type": "BakeNormalMapFromMesh",
+  "inputs": {
+   "low_poly": [
+    "unwrap",
+    0
+   ],
+   "high_poly": [
+    "remesh",
+    0
+   ],
+   "resolution": 2048,
+   "cage_distance": 0.05,
+   "ignore_backfaces": true
+  }
+ },
+ "bake_ao": {
+  "class_type": "BakeAmbientOcclusion",
+  "inputs": {
+   "low_poly": [
+    "unwrap",
+    0
+   ],
+   "high_poly": [
+    "remesh",
+    0
+   ],
+   "resolution": 1024,
+   "samples": 64,
+   "max_distance": 0.71,
+   "strength": 1.0,
+   "bias": 0.01
+  }
+ },
+ "apply": {
+  "class_type": "ApplyTextureToMesh",
+  "inputs": {
+   "mesh": [
+    "unwrap",
+    0
+   ],
+   "base_color": [
+    "bake_tex",
+    0
+   ],
+   "metallic": [
+    "bake_tex",
+    1
+   ],
+   "roughness": [
+    "bake_tex",
+    2
+   ],
+   "occlusion": [
+    "bake_ao",
+    0
+   ],
+   "normal_map": [
+    "bake_nrm",
+    0
+   ]
+  }
+ },
+ "smooth2": {
+  "class_type": "MeshSmoothNormals",
+  "inputs": {
+   "mesh": [
+    "apply",
+    0
+   ],
+   "crease_angle": 180.0
+  }
+ },
+ "info_final": {
+  "class_type": "GetMeshInfo",
+  "inputs": {
+   "mesh": [
+    "smooth2",
+    0
+   ]
+  }
+ },
+ "probe1": {
+  "class_type": "VRAMPeakReport",
+  "inputs": {
+   "value": [
+    "info_final",
+    0
+   ],
+   "tag": "mushroom-cu128-1791327029",
+   "path": "C:\\Users\\shrey\\AppData\\Local\\Temp\\claude\\D--WPI-Assignments-SideGigs\\6e9bca67-1e1b-4562-b31b-d6b959d30d4c\\scratchpad\\results\\mushroom_cu128_probe.json"
+  }
+ },
+ "save": {
+  "class_type": "SaveGLB",
+  "inputs": {
+   "mesh": [
+    "info_final",
+    0
+   ],
+   "filename_prefix": "3d/spike/mushroom"
+  }
+ },
+ "rot0": {
+  "class_type": "RotateMesh",
+  "inputs": {
+   "mesh": [
+    "info_final",
+    0
+   ],
+   "mode": "euler_xyz",
+   "mode.angle_x": 20.0,
+   "mode.angle_y": 0.0,
+   "mode.angle_z": 0.0
+  }
+ },
+ "view0": {
+  "class_type": "RenderMesh",
+  "inputs": {
+   "mesh": [
+    "rot0",
+    0
+   ],
+   "mode": "texture",
+   "width": 512,
+   "height": 512,
+   "background": "#303030"
+  }
+ },
+ "rot1": {
+  "class_type": "RotateMesh",
+  "inputs": {
+   "mesh": [
+    "info_final",
+    0
+   ],
+   "mode": "euler_xyz",
+   "mode.angle_x": 20.0,
+   "mode.angle_y": 90.0,
+   "mode.angle_z": 0.0
+  }
+ },
+ "view1": {
+  "class_type": "RenderMesh",
+  "inputs": {
+   "mesh": [
+    "rot1",
+    0
+   ],
+   "mode": "texture",
+   "width": 512,
+   "height": 512,
+   "background": "#303030"
+  }
+ },
+ "stitch1": {
+  "class_type": "ImageStitch",
+  "inputs": {
+   "image1": [
+    "view0",
+    0
+   ],
+   "image2": [
+    "view1",
+    0
+   ],
+   "direction": "right",
+   "match_image_size": true,
+   "spacing_width": 4,
+   "spacing_color": "black"
+  }
+ },
+ "rot2": {
+  "class_type": "RotateMesh",
+  "inputs": {
+   "mesh": [
+    "info_final",
+    0
+   ],
+   "mode": "euler_xyz",
+   "mode.angle_x": 20.0,
+   "mode.angle_y": 180.0,
+   "mode.angle_z": 0.0
+  }
+ },
+ "view2": {
+  "class_type": "RenderMesh",
+  "inputs": {
+   "mesh": [
+    "rot2",
+    0
+   ],
+   "mode": "texture",
+   "width": 512,
+   "height": 512,
+   "background": "#303030"
+  }
+ },
+ "stitch2": {
+  "class_type": "ImageStitch",
+  "inputs": {
+   "image1": [
+    "stitch1",
+    0
+   ],
+   "image2": [
+    "view2",
+    0
+   ],
+   "direction": "right",
+   "match_image_size": true,
+   "spacing_width": 4,
+   "spacing_color": "black"
+  }
+ },
+ "rot3": {
+  "class_type": "RotateMesh",
+  "inputs": {
+   "mesh": [
+    "info_final",
+    0
+   ],
+   "mode": "euler_xyz",
+   "mode.angle_x": 20.0,
+   "mode.angle_y": 270.0,
+   "mode.angle_z": 0.0
+  }
+ },
+ "view3": {
+  "class_type": "RenderMesh",
+  "inputs": {
+   "mesh": [
+    "rot3",
+    0
+   ],
+   "mode": "texture",
+   "width": 512,
+   "height": 512,
+   "background": "#303030"
+  }
+ },
+ "stitch3": {
+  "class_type": "ImageStitch",
+  "inputs": {
+   "image1": [
+    "stitch2",
+    0
+   ],
+   "image2": [
+    "view3",
+    0
+   ],
+   "direction": "right",
+   "match_image_size": true,
+   "spacing_width": 4,
+   "spacing_color": "black"
+  }
+ },
+ "save_turn": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "stitch3",
+    0
+   ],
+   "filename_prefix": "spike/mushroom_turntable"
+  }
+ }
+}
