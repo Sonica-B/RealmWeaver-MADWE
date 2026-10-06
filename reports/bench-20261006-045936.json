@@ -1,0 +1,102 @@
+{
+ "schema": 1,
+ "timestamp": "2026-10-06T04:59:36-07:00",
+ "env": {
+  "python": "3.14.3",
+  "torch": "2.11.0+cu128",
+  "diffusers": "0.41.0",
+  "gpu": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+  "vram_gb": 11.94000244140625,
+  "generator": "DiffusionGenerator"
+ },
+ "params": {
+  "n": 100,
+  "seed": 0,
+  "biomes": [
+   "forest",
+   "desert",
+   "snow",
+   "volcanic",
+   "underwater",
+   "sky"
+  ],
+  "size": 512,
+  "steps": 4,
+  "chunk": 16
+ },
+ "latency_s": {
+  "p50": 0.3651891999761574,
+  "p95": 0.37308869999833405,
+  "mean": 0.3625631579966284
+ },
+ "assets_per_min": 165.28022634305407,
+ "tileability": {
+  "mean_ratio": 1.0995292818546296,
+  "share_leq_1_2": 0.8
+ },
+ "tiling_score_mean": 0.1673571004765108,
+ "style_consistency": 0.09683653293622768,
+ "vram": {
+  "peak_allocated_gb": 3.1379480361938477,
+  "peak_reserved_gb": 4.548828125
+ },
+ "allocator": {
+  "pool_on": {
+   "resident_bytes": 5081468416,
+   "max_memory_allocated": 5856751104,
+   "max_memory_reserved": 8241807360,
+   "num_alloc_retries": 0,
+   "num_device_alloc": 0,
+   "reserved_minus_allocated_bytes": 3160338944,
+   "latency_s": {
+    "p50": 0.36980295000830665,
+    "p95": 0.37682479998329654,
+    "mean": 0.3664663750008913
+   },
+   "n": 100
+  },
+  "pool_off": {
+   "resident_bytes": 5061538816,
+   "max_memory_allocated": 5838019072,
+   "max_memory_reserved": 7413432320,
+   "num_alloc_retries": 0,
+   "num_device_alloc": 0,
+   "reserved_minus_allocated_bytes": 2351893504,
+   "latency_s": {
+    "p50": 0.631623799999943,
+    "p95": 0.6890782000264153,
+    "mean": 0.6315592469985131
+   },
+   "n": 100
+  }
+ },
+ "fid_kid": {
+  "fid": 265.6156921386719,
+  "kid_mean": 0.03937150165438652,
+  "kid_std": 0.004269031807780266,
+  "n": 100
+ },
+ "wfc_ms_per_chunk": 20.499039165345796,
+ "predictor": {
+  "markov_hit_rate": 0.987012987012987,
+  "ring_hit_rate": 0.5616883116883117,
+  "seeds": 20
+ },
+ "targets_2025": {
+  "fid": 32.4,
+  "s_per_asset": 2.7,
+  "textures_per_min": 120,
+  "tileable_pct": 94,
+  "style": 0.89,
+  "vram_gb": 6.2
+ },
+ "notes": [
+  "fid_kid reference set: data\\raw\\textures (240 SDXL-Turbo textures from the 2025 repo, the only one available); FID is biased at small n, KID (subset mean, std) is the unbiased statistic, its std degenerate to 0 while n is at or below the subset size; neither is a ground-truth style target",
+  "latency_s: the generator's per-asset time over 100 draft seamless textures after 3 uncounted warm-ups; assets_per_min: textures / wall-clock of that loop",
+  "tileability: wrapped-seam over interior gradient ratio, 1.0 = seamless; share_leq_1_2: share at or below 1.2; tiling_score_mean: Tiled-Diffusion seam score, lower is better",
+  "wfc_ms_per_chunk: mean wall ms per 16x16 solve, 20 seeds per biome",
+  "predictor: top-3 hit-rate over 20 synthetic walks of 400 steps, heading noise sd 0.25; the ring baseline takes its first 3 neighbours",
+  "targets_2025 are the 2025 pitch numbers, not measurements",
+  "allocator: each arm is a fresh generator from make_generator, pool on then off, run with the benchmarked generator's pipeline still resident (see resident_bytes); reserved_minus_allocated_bytes is the mean over its timed images of bytes reserved minus allocated right after each image"
+ ]
+}

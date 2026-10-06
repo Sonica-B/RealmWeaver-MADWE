@@ -80,8 +80,21 @@ def table(report: dict) -> str:
     return head + body + notes
 
 
+def _report_time(path: Path) -> float:
+    """Newest by the report's own ISO timestamp (filenames mix local and UTC clocks); mtime as fallback."""
+    try:
+        from datetime import datetime
+
+        return datetime.fromisoformat(json.loads(path.read_text(encoding="utf-8"))["timestamp"]).timestamp()
+    except Exception:
+        return path.stat().st_mtime
+
+
 def main() -> int:
-    reports = sorted(Path("reports").glob("bench-*.json"))
+    explicit = [a for a in sys.argv[1:] if a.endswith(".json")]
+    reports = (
+        [Path(explicit[0])] if explicit else sorted(Path("reports").glob("bench-*.json"), key=_report_time)
+    )
     if not reports:
         print("no reports/bench-*.json found", file=sys.stderr)
         return 1
