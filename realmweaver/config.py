@@ -32,7 +32,8 @@ class Settings:
 
 def settings() -> Settings:
     """Build settings from defaults + environment. Cheap; call it where needed instead of caching globally."""
-    s = Settings(device="cuda" if _cuda_available() else "cpu")
+    forced = os.environ.get("REALMWEAVER_DEVICE")
+    s = Settings(device=forced or ("cuda" if _cuda_available() else "cpu"))
     for f in fields(Settings):
         raw = os.environ.get(f"REALMWEAVER_{f.name.upper()}")
         if raw is None:
