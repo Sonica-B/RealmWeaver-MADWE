@@ -1,0 +1,19 @@
+{
+  "name": "com.realmweaver.client",
+  "version": "0.2.0",
+  "displayName": "RealmWeaver Client",
+  "description": "Streams RealmWeaver chunks and generated textures from the Python bridge into a Unity 6 scene: HTTP PNG + chunk JSON, WebSocket ready events (ADR-0003). Generation stays in Python.",
+  "unity": "6000.3",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "RealmWeaver (MADWE)",
+    "url": "https://github.com/Sonica-B/RealmWeaver-MADWE"
+  },
+  "documentationUrl": "https://github.com/Sonica-B/RealmWeaver-MADWE/blob/main/unity/com.realmweaver.client/README.md",
+  "keywords": ["realmweaver", "procedural", "diffusion", "tiles", "streaming", "websocket"],
+  "dependencies": {},
+  "optionalDependencies": {
+    "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm-2"
+  },
+  "_notes": "optionalDependencies is documentation only: UPM package manifests accept SemVer dependencies, not git URLs, so add the NativeWebSocket git URL to the project's Packages/manifest.json (#upm-2 = 2.x, #upm = 1.x). While it is installed the asmdef defines REALMWEAVER_WS and RealmWeaverEvents uses WS /events; without it the client polls /chunk state."
+}
