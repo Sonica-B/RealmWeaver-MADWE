@@ -539,3 +539,22 @@ def test_index_served():
 - Spec coverage: stories 1–25 map to Tasks 1 (4–6), 2/3 (1–3, 17, 23), 4 (10–13, 24), 5 (16, 25), 6 (7–9), 7 (14, 15), 8 (CLI), 9 (18–22). Story 22 (quality tier) is satisfied by the `Generator` seam; `KleinGenerator` itself is a follow-up and documented as such in the README.
 - Type consistency: `AssetSpec.subject` is the tile class for textures and the prop name for sprites everywhere; chunk keys are `(cx, cy)` ints; directions are N,E,S,W = 0..3 with `DIRS` from `realmweaver.types`; `allowed[a, d, b]` reads "b may sit in direction d of a".
 - Placeholder scan: none; every task lists concrete tests and signatures. Implementations are written by the task agent under TDD because the interfaces, tests and algorithms above fix the behaviour.
+
+## Contract addendum: chunk JSON (binding for Tasks 5 and 6)
+
+`GET /chunk/{cx}/{cy}` returns exactly these keys (JsonUtility cannot read dictionaries or jagged arrays, so every map has a flat twin):
+
+```json
+{"cx": 0, "cy": 0, "biome": "forest", "size": 8, "state": "draft",
+ "classes": ["grass", "water"],
+ "tilesFlat": [0, 0, 1],
+ "tiles": [["grass", "grass"], ["water", "grass"]],
+ "assets": {"grass": "1a2b3c4d5e6f7a8b"}, "assetList": [{"k": "grass", "v": "1a2b3c4d5e6f7a8b"}],
+ "prefabs": {"grass": "Prefab_grass"}, "prefabList": [{"k": "grass", "v": "Prefab_grass"}]}
+```
+
+`tilesFlat` is row-major (`index = y * size + x`) into `classes`. `tests/fixtures/chunk_example.json` holds this example; Task 6's protocol test checks the C# DTO fields against it and Task 5's bridge test checks its response keys against it. Events over `WS /events`: `{"type": "hello"}` on connect, then `{"type": "ready", "chunk": [cx, cy], "assets": {"grass": "..."}}`.
+
+## Execution notes (lead)
+
+Task agents do not commit; the lead commits after each wave. Shared files (`pyproject.toml`, `realmweaver/types.py`, `realmweaver/config.py`, `realmweaver/biomes/__init__.py`) change only through the lead. `realmweaver/assets/__init__.py` and `realmweaver/metrics/__init__.py` are owned by Task 2; Task 3 modules are imported by their full path (`realmweaver.assets.diffusion`). Wave order revised: Task 4 alone after Tasks 1–2; then Tasks 5 and 7 together; then Task 8; then Task 9.

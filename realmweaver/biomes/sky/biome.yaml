@@ -1,0 +1,30 @@
+name: sky
+style: "top-down 2D game texture, painterly fantasy floating sky islands, bright airy light, pastel blue sky, rich detail"
+negative: "blurry, text, watermark, border, frame, seam, low quality, photo"
+coherence_threshold: 0.55
+lora: null
+legend: {c: cloud, g: grass, s: stone, y: crystal, w: waterfall, v: void}
+tiles:
+  cloud:     {prompt: "fluffy white cumulus cloud tops seen from above", palette: ["#eef3fa", "#ffffff", "#cdd9ea"]}
+  grass:     {prompt: "bright sky-island meadow grass with tiny white flowers", palette: ["#6cbf5a", "#8ad872", "#4e9a42"]}
+  stone:     {prompt: "weathered floating-island cliff stone with pale lichen", palette: ["#8f9aa6", "#aab4bf", "#6c7682"]}
+  crystal:   {prompt: "glowing cyan crystal cluster jutting from grass", palette: ["#5fe0e8", "#9df1f5", "#2fb3bd"]}
+  waterfall: {prompt: "white water cascading off the island edge into mist", palette: ["#a9d8f0", "#d7eefb", "#7fb9dc"]}
+  void:      {prompt: "open pastel blue sky far below with distant haze", palette: ["#8fb8e8", "#b3d0f2", "#6a96cc"]}
+props:
+  windmill: "a tiny stone windmill, game prop, centered, white background"
+  balloon: "a striped hot air balloon, game prop, centered, white background"
+  shrine: "a small floating crystal shrine, game prop, centered, white background"
+map: |
+  vvccccccccvv
+  vccccssccccv
+  cccssggssccc
+  ccsgggygggsc
+  ccsggggggwwc
+  ccsgggggggsc
+  ccsgygggggsc
+  cccsggggggsc
+  cccsgggggscc
+  ccccsswssccc
+  vcccccwcccvv
+  vvvcccccccvv

@@ -1,0 +1,30 @@
+name: snow
+style: "top-down 2D game texture, painterly fantasy winter tundra, cool overcast light, soft blue shadows, rich detail"
+negative: "blurry, text, watermark, border, frame, seam, low quality, photo"
+coherence_threshold: 0.55
+lora: null
+legend: {n: snow, i: ice, l: frozen_lake, p: pine, r: rock, t: path}
+tiles:
+  snow:        {prompt: "fresh untouched powder snow with faint wind drifts", palette: ["#e8eef5", "#f7fafd", "#c9d6e4"]}
+  ice:         {prompt: "cracked pale shore ice with frost patterns", palette: ["#b7d6ea", "#d2e8f5", "#8fb8d4"]}
+  frozen_lake: {prompt: "dark glassy frozen lake surface with trapped bubbles", palette: ["#4f7fa3", "#6b9bbd", "#3a6183"]}
+  pine:        {prompt: "snow-laden pine canopy seen from above", palette: ["#2d4d3a", "#3f6a4e", "#1e352a"]}
+  rock:        {prompt: "frost-covered grey granite boulders", palette: ["#7d868c", "#9aa3a9", "#5f686e"]}
+  path:        {prompt: "trampled snow trail with footprints and exposed frozen mud", palette: ["#b9ad9c", "#d0c6b7", "#948872"]}
+props:
+  snowman: "a small snowman with a carrot nose, game prop, centered, white background"
+  stump: "a frosted tree stump, game prop, centered, white background"
+  lantern: "an iron lantern on a wooden post with warm light, game prop, centered, white background"
+map: |
+  ppnnntnnnnpp
+  pnnnttnnnnnp
+  nnnntnniiinn
+  nnnntniillin
+  nnnntnilllin
+  nnnntnilllin
+  nnnntniillin
+  nnnntnniiinn
+  nrrntnnnnnnn
+  rrrntttnpnnn
+  nrnntnnpppnn
+  pnnntnnnpnnp
