@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 
 _STEPS = {"draft": 4, "refine": 8}  # the anytime knob per quality tier, as the world agent sets it
 _TILE_PX = 32  # a world preview draws every tile as its asset downscaled to this many pixels
+_ROOT = Path(__file__).resolve().parent.parent  # the checkout: `wire --write` rewrites its Unity package
 
 
 def _adapters(mode: str, embed: bool = False) -> tuple[Generator, Callable[[np.ndarray], np.ndarray]]:
@@ -148,6 +149,21 @@ def _train_lora(args: argparse.Namespace) -> int:
     return 0
 
 
+def _wire(args: argparse.Namespace) -> int:
+    """Print what the wire table renders; with --write, rewrite the `<wire-generated>` regions under --root."""
+    from realmweaver import wire
+
+    for rel, renderer in wire.GENERATED.items():
+        if args.write:
+            path = args.root / rel
+            text = wire.regenerate(path.read_text(encoding="utf-8"), renderer())
+            path.write_text(text, encoding="utf-8", newline="\n")
+            print(path)
+        else:
+            print(renderer(), end="")
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="realmweaver", description=__doc__.split("\n", 1)[0])
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
@@ -202,6 +218,10 @@ def _parser() -> argparse.ArgumentParser:
     t.add_argument("--steps", type=int, default=200)
     t.add_argument("--rank", type=int, default=8)
     t.add_argument("--out", type=Path, metavar="DIR", help="default: <models_dir>/lora/<biome>")
+
+    wr = command("wire", _wire, "the Unity DTOs and README contract rendered from the wire table", False)
+    wr.add_argument("--write", action="store_true", help="rewrite the <wire-generated> regions in place")
+    wr.add_argument("--root", type=Path, default=_ROOT, help=argparse.SUPPRESS)
     return parser
 
 

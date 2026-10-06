@@ -20,11 +20,12 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from realmweaver import wire
 from realmweaver.biomes import biome_names, load_biome
 from realmweaver.config import settings
 from realmweaver.metrics import histogram_embed, tileability
 from realmweaver.metrics.bench import latest_report
-from realmweaver.types import Asset, AssetSpec, Chunk, Generator, ImagePayload, Kind, Tier
+from realmweaver.types import Asset, AssetSpec, Generator, ImagePayload, Kind, Tier
 from realmweaver.world import ChunkResult, ThreadRunner, World
 
 log = logging.getLogger(__name__)
@@ -54,26 +55,6 @@ class GenerateRequest(BaseModel):  # AssetSpec fields; `subject` is the tile cla
 class PlayerPosition(BaseModel):
     x: float
     y: float
-
-
-def _kv(mapping: dict[str, str]) -> list[dict[str, str]]:
-    return [{"k": k, "v": v} for k, v in mapping.items()]
-
-
-def chunk_json(chunk: Chunk) -> dict[str, Any]:
-    """The binding Unity payload (tests/fixtures/chunk_example.json): every map has a flat twin."""
-    layout, assets = chunk.layout, dict(chunk.asset_ids)
-    prefabs = {cls: f"Prefab_{cls}" for cls in assets}
-    return {
-        "cx": chunk.cx, "cy": chunk.cy, "biome": chunk.biome, "size": layout.width, "state": chunk.state,
-        "tiles": layout.class_rows(), "assets": assets, "prefabs": prefabs, "classes": list(layout.tileset.classes),
-        "tilesFlat": layout.grid.ravel().tolist(), "assetList": _kv(assets), "prefabList": _kv(prefabs),
-    }  # fmt: skip
-
-
-def ready_event(chunk: Chunk) -> Event:
-    assets = dict(chunk.asset_ids)
-    return {"type": "ready", "chunk": [chunk.cx, chunk.cy], "assets": assets, "assetList": _kv(assets)}
 
 
 def _adapters(
@@ -157,9 +138,9 @@ class Bridge:
     # -- world calls (threadpool) ---------------------------------------------------------------------------
 
     def chunk(self, cx: int, cy: int, tier: Tier) -> dict[str, Any]:
-        """The chunk JSON once the world's player-priority job is done (at once when the chunk is resident); its
-        ready event, if any, went out through `_ready` before the handle settled."""
-        return chunk_json(self.world.submit(cx, cy, tier, priority="player").result().chunk)
+        """The chunk JSON (`wire.chunk_payload`) once the world's player-priority job is done (at once when the
+        chunk is resident); its ready event, if any, went out through `_ready` before the handle settled."""
+        return wire.chunk_payload(self.world.submit(cx, cy, tier, priority="player").result().chunk)
 
     def player(self, x: float, y: float) -> list[Key]:
         """Observe the position, schedule one prewarm, return what the world prewarmed since the previous call."""
@@ -219,11 +200,11 @@ class Bridge:
 
     def _ready(self, result: ChunkResult) -> None:
         """`World.on_ready`: on the thread that generated the chunk, encode its new assets, then announce it."""
-        chunk = result.chunk
-        for asset_id in chunk.asset_ids.values():
+        chunk, assets = result.chunk, dict(result.chunk.asset_ids)
+        for asset_id in assets.values():
             if asset_id not in self.encoded:
                 self._encode(self.world.asset(asset_id))
-        self.broadcast(ready_event(chunk))
+        self.broadcast(wire.ready_event(chunk, assets))
 
     def broadcast(self, event: Event) -> None:
         for loop, queue in list(self.listeners):

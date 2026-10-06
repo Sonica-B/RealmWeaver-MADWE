@@ -53,20 +53,58 @@ chunk first, and `ready` events (or the poll) refresh chunks whose assets finish
 
 ## JSON contract
 
-`GET /chunk/{cx}/{cy}?tier=draft|refine`; `tests/fixtures/chunk_example.json` is the reference payload.
+`realmweaver/wire.py` defines every message once, as a field table: the bridge builds its payloads from it, and the
+`[Serializable]` DTOs in `RealmWeaverClient.cs` and the tables below are rendered from it between `<wire-generated>`
+marker lines (`uv run realmweaver wire --write` rewrites both; `tests/test_wire.py` fails when either drifts).
+`JsonUtility` reads neither dictionaries nor jagged arrays, so Unity ignores every map key and reads its flat twin;
+the map stays for other clients. `GET /chunk/{cx}/{cy}?tier=draft|refine` returns a `ChunkDto`;
+`tests/fixtures/chunk_example.json` is the reference payload.
 
-| Key | Type | Unity |
-|---|---|---|
-| `cx`, `cy`, `size` | int | read |
-| `biome`, `state` (`pending`, `draft`, `ready`) | string | read |
-| `classes` | string[] | read: tile class names |
-| `tilesFlat` | int[] of length `size*size` | read: row-major indices into `classes` |
-| `assetList`, `prefabList` | `[{"k": tileClass, "v": assetId or "Prefab_<tileClass>"}]` | read |
-| `tiles`, `assets`, `prefabs` | nested rows, objects | ignored: `JsonUtility` reads neither jagged arrays nor dictionaries; kept for other clients |
+<!-- <wire-generated> from the field table in realmweaver/wire.py: edit it there, then `uv run realmweaver wire --write` -->
+### `KV`
+
+One key/value pair: the JsonUtility-readable form of a JSON object used as a map.
+
+| Key | JSON | C# | Notes |
+|---|---|---|---|
+| `k` | `string` | `string` |  |
+| `v` | `string` | `string` |  |
+
+### `ChunkDto`
+
+GET /chunk/{cx}/{cy}. Field names are the JSON keys; tests/test_unity_protocol.py checks them.
+
+| Key | JSON | C# | Notes |
+|---|---|---|---|
+| `cx` | `int` | `int` |  |
+| `cy` | `int` | `int` |  |
+| `size` | `int` | `int` | tiles per side |
+| `biome` | `string` | `string` |  |
+| `state` | `string` | `string` | pending \| draft \| ready |
+| `tiles` | `[[string]]` | ignored | rows of tile class names, row 0 first; Unity reads `tilesFlat` instead; kept for other clients |
+| `classes` | `string[]` | `string[]` | tile class names; tilesFlat indexes into this |
+| `tilesFlat` | `int[]` | `int[]` | size*size entries, row-major, row 0 first; flat twin of `tiles` |
+| `assets` | `{string: string}` | ignored | tile class -> asset id; Unity reads `assetList` instead; kept for other clients |
+| `assetList` | `[{"k", "v"}]` | `List<KV>` | tile class -> asset id, fetched as /asset/\<id>.png; flat twin of `assets` |
+| `prefabs` | `{string: string}` | ignored | tile class -> prefab name; Unity reads `prefabList` instead; kept for other clients |
+| `prefabList` | `[{"k", "v"}]` | `List<KV>` | tile class -> prefab name, "Prefab_\<tileClass>"; flat twin of `prefabs` |
+
+### `ReadyEvent`
+
+WS /events message. Only type == "ready" is acted on; "hello" parses with chunk == null.
+
+| Key | JSON | C# | Notes |
+|---|---|---|---|
+| `type` | `string` | `string` |  |
+| `chunk` | `int[]` | `int[]` | [cx, cy] |
+| `assets` | `{string: string}` | ignored | tile class -> asset id; Unity reads `assetList` instead; kept for other clients |
+| `assetList` | `[{"k", "v"}]` | `List<KV>` | tile class -> asset id; flat twin of `assets` |
+
+<!-- </wire-generated> -->
 
 `GET /asset/{id}.png` returns the PNG (`wrapMode = Repeat`). `POST /player` takes `{"x": <float>, "y": <float>}` in tile
-units. `WS /events` sends `{"type": "hello"}` on connect, then `{"type": "ready", "chunk": [cx, cy], "assets": {cls: id}, "assetList": [{"k", "v"}]}`;
-the client acts on `type` and `chunk` only and re-fetches the chunk.
+units. `WS /events` sends `{"type": "hello"}` on connect, then a `ReadyEvent` per chunk the world finished; the client
+acts on `type` and `chunk` only and re-fetches the chunk.
 
 `tests/test_unity_protocol.py` parses the `[Serializable]` DTOs in `RealmWeaverClient.cs` and asserts every field is a
 key of the fixture; the bridge test asserts its live response carries the fixture keys. Unity itself is not compiled in CI.

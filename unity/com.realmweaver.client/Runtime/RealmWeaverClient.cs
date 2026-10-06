@@ -10,6 +10,7 @@ using UnityEngine.Networking;
 
 namespace RealmWeaver.Client
 {
+    // <wire-generated> from the field table in realmweaver/wire.py: edit it there, then `uv run realmweaver wire --write`
     /// <summary>One key/value pair: the JsonUtility-readable form of a JSON object used as a map.</summary>
     [Serializable]
     public class KV
@@ -39,8 +40,9 @@ namespace RealmWeaver.Client
     {
         public string type;
         public int[] chunk;         // [cx, cy]
-        public List<KV> assetList;  // tile class -> asset id (flat twin of the bridge's assets object)
+        public List<KV> assetList;  // tile class -> asset id
     }
+    // </wire-generated>
 
     /// <summary>Talks HTTP to the Python bridge (`uv run realmweaver serve`). One per scene; the others hold a reference.</summary>
     public sealed class RealmWeaverClient : MonoBehaviour
