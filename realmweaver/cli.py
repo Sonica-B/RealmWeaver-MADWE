@@ -36,8 +36,7 @@ def _adapters(mode: str, embed: bool = False) -> tuple[Generator, Callable[[np.n
     if mode == "procedural" or (mode == "auto" and not device.startswith("cuda")):
         log.info("asset agent: ProceduralGenerator + histogram_embed on cpu")
         return ProceduralGenerator(), histogram_embed
-    from realmweaver.assets.diffusion import DiffusionGenerator
-    from realmweaver.assets.embed import DinoEmbedder
+    from realmweaver.assets import DiffusionGenerator, DinoEmbedder
 
     generator = DiffusionGenerator()
     log.info("asset agent: DiffusionGenerator%s on %s", " + DinoEmbedder" if embed else "", device)
@@ -82,12 +81,20 @@ def _walk(steps: int, chunks: int, chunk_size: int) -> Iterator[tuple[float, flo
         yield x + 0.5, y + 0.5
 
 
+def _thumb(image: np.ndarray, px: int) -> np.ndarray:
+    """`px` x `px` RGB thumbnail of an asset: a box filter when its side is a multiple of `px`, else nearest."""
+    side, f = image.shape[0], image.shape[0] // px
+    if f and side == f * px:
+        return image[..., :3].reshape(px, f, px, f, 3).mean(axis=(1, 3)).round().astype(np.uint8)
+    idx = np.arange(px) * side // px
+    return image[idx][:, idx, :3]
+
+
 def _chunk_image(world: World, chunk: Chunk, thumbs: dict[str, np.ndarray]) -> np.ndarray:
-    """One chunk drawn tile by tile from its assets, each downscaled once (box filter) into `thumbs`."""
+    """One chunk drawn tile by tile from its assets, each downscaled once into `thumbs`."""
     px, ids = _TILE_PX, chunk.asset_ids
     for asset_id in set(ids.values()) - set(thumbs):
-        rgb = Image.fromarray(world.asset(asset_id).image[..., :3])
-        thumbs[asset_id] = np.asarray(rgb.resize((px, px), Image.Resampling.BOX))
+        thumbs[asset_id] = _thumb(world.asset(asset_id).image, px)
     blank = np.zeros((px, px, 3), np.uint8)  # for tile classes absent from this chunk
     tiles = np.stack([thumbs[ids[c]] if c in ids else blank for c in chunk.layout.tileset.classes])
     n = chunk.layout.grid.shape[0]
@@ -120,18 +127,26 @@ def _serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _diffusion_arm(pool: bool) -> Generator:
+    """One more diffusion pipeline with the memory pool on or off: the bench builds its allocator A/B arms with it."""
+    from realmweaver.assets import DiffusionGenerator
+
+    return DiffusionGenerator(pool=pool)
+
+
 def _bench(args: argparse.Namespace) -> int:
-    from realmweaver.metrics.bench import run_bench
+    from realmweaver.metrics import run_bench
 
     generator, embed = _adapters("procedural" if args.procedural else "auto", embed=True)
     biomes = [name.strip() for name in args.biomes.split(",") if name.strip()]
+    arms = _diffusion_arm if args.pool_ab and not args.procedural else None
     out = settings().reports_dir
-    print(run_bench(generator, biomes, args.n, 0, out, with_fid=args.fid, pool_ab=args.pool_ab, embed=embed))
+    print(run_bench(generator, biomes, args.n, 0, out, with_fid=args.fid, embed=embed, make_generator=arms))
     return 0
 
 
 def _train_lora(args: argparse.Namespace) -> int:
-    from realmweaver.assets.lora import train_biome_lora
+    from realmweaver.assets import train_biome_lora
 
     out = args.out or settings().models_dir / "lora" / args.biome
     print(train_biome_lora(args.biome, args.images, out, rank=args.rank, steps=args.steps))

@@ -6,7 +6,7 @@ from realmweaver.world import Scheduler
 def test_never_more_than_max_in_flight_before_done():
     s = Scheduler(max_in_flight=2, cache_bytes=1 << 30)
     for i in range(5):
-        s.submit((i, 0), priority=0.5, bytes_hint=10)
+        s.submit((i, 0), priority=0.5)
     first, second = s.next(), s.next()
     assert first is not None and second is not None and s.in_flight == 2
     assert s.next() is None  # cap reached
@@ -16,9 +16,9 @@ def test_never_more_than_max_in_flight_before_done():
 
 def test_higher_priority_is_returned_first():
     s = Scheduler(cache_bytes=1 << 30)
-    s.submit((0, 1), priority=0.1, bytes_hint=1)
-    s.submit((5, 5), priority=0.9, bytes_hint=1)
-    s.submit((1, 0), priority=0.4, bytes_hint=1)
+    s.submit((0, 1), priority=0.1)
+    s.submit((5, 5), priority=0.9)
+    s.submit((1, 0), priority=0.4)
     assert s.next() == (5, 5) and s.next() == (1, 0)
 
 
@@ -35,21 +35,21 @@ def test_evicts_the_farthest_lru_key_once_bytes_exceed_the_cap():
 
 def test_priority_is_divided_by_cost():
     s = Scheduler(cost_s=1.0, cache_bytes=1 << 30)
-    s.submit((0, 0), priority=0.9, bytes_hint=1, cost_s=3.0)  # score 0.3
-    s.submit((1, 1), priority=0.4, bytes_hint=1)  # score 0.4
+    s.submit((0, 0), priority=0.9, cost_s=3.0)  # score 0.3
+    s.submit((1, 1), priority=0.4)  # score 0.4
     assert s.next() == (1, 1)
 
 
 def test_resubmission_replaces_the_score_and_running_or_cached_keys_are_ignored():
     s = Scheduler(cache_bytes=1 << 30)
-    s.submit((0, 0), 0.9, 1)
-    s.submit((1, 1), 0.5, 1)
-    s.submit((0, 0), 0.1, 1)  # the latest prediction wins
+    s.submit((0, 0), 0.9)
+    s.submit((1, 1), 0.5)
+    s.submit((0, 0), 0.1)  # the latest prediction wins
     assert s.next() == (1, 1)
-    s.submit((1, 1), 1.0, 1)  # in flight: ignored
+    s.submit((1, 1), 1.0)  # in flight: ignored
     assert s.pending == 1
     s.done((1, 1), 1)
-    s.submit((1, 1), 1.0, 1)  # cached: ignored
+    s.submit((1, 1), 1.0)  # cached: ignored
     assert s.pending == 1 and (1, 1) in s and (0, 0) not in s
 
 
@@ -71,15 +71,15 @@ def test_the_current_chunk_is_never_evicted():
 
 def test_pending_requests_beyond_the_horizon_are_pruned():
     s = Scheduler(cache_bytes=1 << 30)
-    s.submit((9, 9), 0.9, 1)
-    s.submit((1, 0), 0.1, 1)
+    s.submit((9, 9), 0.9)
+    s.submit((1, 0), 0.1)
     s.evict_if_needed(current=(0, 0))
     assert s.pending == 1 and s.next() == (1, 0)
 
 
 def test_abort_frees_the_in_flight_slot_without_caching():
     s = Scheduler(max_in_flight=1, cache_bytes=1 << 30)
-    s.submit((0, 0), 0.5, 1)
+    s.submit((0, 0), 0.5)
     key = s.next()
     assert s.next() is None
     s.abort(key)

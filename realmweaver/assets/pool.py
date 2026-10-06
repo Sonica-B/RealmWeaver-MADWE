@@ -2,9 +2,11 @@
 
 Holds the device latent buffer the pipeline is handed as `latents=`, a pinned host noise buffer filled from a seeded
 CPU generator (so a seed gives the same noise on any GPU), the prompt-embed cache keyed by
-(biome, kind, subject, tier), and the UNet steps captured as CUDA graphs per (adapters, padding, shape). Weights
-stay resident; after warm-up nothing here is re-allocated per image and the UNet step replays without Python
-dispatch, which is where an unfused PEFT LoRA spends most of its time.
+(biome, kind, subject, tier), and the UNet steps captured as CUDA graphs, one per combination of everything a
+captured forward bakes in: the caller's key (adapters, padding mode, CFG) plus the inputs' shapes and dtypes and
+the scalar kwargs. Weights stay resident; after warm-up nothing here is re-allocated per image and the UNet step
+replays without Python dispatch, which is where an unfused PEFT LoRA spends most of its time. Not thread-safe:
+one generation at a time per pool (the bridge serialises generation).
 
 Allocator setting: `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is exported before torch is imported, only when
 neither it nor `PYTORCH_ALLOC_CONF` is already set and only off Windows: torch 2.11 on Windows prints
@@ -30,6 +32,21 @@ log = logging.getLogger(__name__)
 # (prompt_embeds, negative_prompt_embeds or None without CFG)
 Embeds = tuple[torch.Tensor, torch.Tensor | None]
 GraphKey = tuple[Any, ...]
+_SCALARS = (bool, int, float, str)
+
+
+def _kwargs_key(kwargs: dict[str, Any]) -> tuple[GraphKey, bool]:
+    """The UNet kwargs as a hashable key, and whether a graph may bake every one of them in: None and scalar values
+    are keyed by value, anything else (a tensor, a dict of tensors) by name and type only, which rules out capture."""
+    key: list[tuple[str, Any]] = []
+    capturable = True
+    for name, value in sorted(kwargs.items()):
+        if value is None or isinstance(value, _SCALARS):
+            key.append((name, value))
+        else:
+            key.append((name, type(value).__name__))
+            capturable = False
+    return tuple(key), capturable
 
 
 class CapturedStep:
@@ -82,8 +99,8 @@ class MemoryPool:
         self.latents = torch.zeros(shape, device=self.device, dtype=dtype)
         self.noise = torch.zeros(shape, dtype=torch.float32, pin_memory=self.device.type == "cuda")
         self.prompt_embeds: dict[tuple[str, ...], Embeds] = {}
-        # ponytail: one captured graph per (adapters, padding, shape), each holding its own activation memory and
-        # never evicted; share one mempool or LRU-evict once many biome LoRAs are resident at once.
+        # ponytail: one captured graph per key (see `step`), each holding its own activation memory and never
+        # evicted; share one mempool or LRU-evict once many biome LoRAs are resident at once.
         self.steps: dict[GraphKey, CapturedStep | None] = {}
 
     def seeded_latents(self, seed: int) -> torch.Tensor:
@@ -107,18 +124,33 @@ class MemoryPool:
         embeds: torch.Tensor,
         **kwargs: Any,
     ) -> torch.Tensor:
-        """Run one UNet step through the graph captured for `key`, capturing it on first use.
+        """Run one UNet step through the graph captured for `key` plus the inputs' shapes, dtypes and the kwargs,
+        capturing it on first use.
 
-        A capture that fails (an op the graph cannot record) is logged once and that key falls back to eager.
+        `key` carries what the caller knows changes the forward (adapters, padding mode, CFG); the shapes and dtypes
+        of `sample`, `timestep` and `embeds` and the kwargs are keyed here. A kwarg a graph cannot key by value (a
+        tensor, a dict) runs eagerly under its own key instead of replaying a graph that baked another value in, as
+        does a key whose capture failed (an op the graph cannot record); both are logged once.
         """
-        if key not in self.steps:
-            try:
-                self.steps[key] = CapturedStep(forward, sample, timestep, embeds, **kwargs)
-                log.info("captured UNet step %s (%.0f MiB)", key, self.steps[key].nbytes / 2**20)
-            except Exception:  # noqa: BLE001 - any capture failure means eager for this key
-                log.warning("CUDA graph capture failed for %s; running this step eagerly", key, exc_info=True)
-                self.steps[key] = None
-        captured = self.steps[key]
+        extra, capturable = _kwargs_key(kwargs)
+        inputs = tuple((tuple(t.shape), t.dtype) for t in (sample, timestep, embeds))
+        full: GraphKey = (*key, *inputs, extra)
+        if full not in self.steps:
+            # ponytail: only sample, timestep and embeds have static buffers a replay copies into, so a step with a
+            # tensor kwarg stays eager; one static buffer per tensor kwarg, keyed by its shape, is the upgrade path.
+            if not capturable:
+                log.info("UNet kwargs %s cannot be baked into a CUDA graph; running %s eagerly", extra, full)
+                self.steps[full] = None
+            else:
+                try:
+                    self.steps[full] = CapturedStep(forward, sample, timestep, embeds, **kwargs)
+                    log.info("captured UNet step %s (%.0f MiB)", full, self.steps[full].nbytes / 2**20)
+                except Exception:  # noqa: BLE001 - any capture failure means eager for this key
+                    log.warning(
+                        "CUDA graph capture failed for %s; running this step eagerly", full, exc_info=True
+                    )
+                    self.steps[full] = None
+        captured = self.steps[full]
         if captured is None:
             return forward(sample, timestep, encoder_hidden_states=embeds, **kwargs)[0]
         return captured(sample, timestep, embeds)

@@ -2,7 +2,8 @@
 predictor-driven prewarm queue and a byte-capped cache, all recorded in the world state graph.
 
 Generation is synchronous: `request_chunk` returns once the chunk's layout and assets exist, and `tick` generates
-at most `budget` predicted chunks before returning.
+at most `budget` chunks before returning: predicted ones as drafts first and, once nothing is left to prewarm,
+draft chunks refined nearest the player first.
 """
 
 from __future__ import annotations
@@ -71,7 +72,9 @@ class World:
         self.asset_size = settings().asset_size
         self._assets: dict[str, Asset] = {}  # resident pixels by asset id
         self._player_chunk: Key | None = None
-        self._counts = dict.fromkeys(("prewarm_hits", "prewarm_misses", "regenerations", "fallbacks"), 0)
+        self._counts = dict.fromkeys(
+            ("prewarm_hits", "prewarm_misses", "regenerations", "fallbacks", "refined"), 0
+        )
         self._chunk_latencies: list[float] = []
 
     def request_chunk(self, cx: int, cy: int, tier: Tier = "draft") -> Chunk:
@@ -113,22 +116,30 @@ class World:
         self.scheduler.touch(key)
 
     def tick(self, budget: int = 1) -> list[Key]:
-        """Prewarm: queue the player's absent neighbours at their visit probability, generate up to `budget`."""
+        """Prewarm: queue the player's absent neighbours at their visit probability and generate up to `budget` of
+        them; budget left once the queue is empty refines that many draft chunks, nearest the player first.
+        Returns the keys generated or refined."""
         if self._player_chunk is None:
             return []
         current = self._player_chunk
         self._evict(current)
-        bytes_hint = len(self.tileset) * self.asset_size * self.asset_size * 3
+        cost = float(np.mean(self._chunk_latencies)) if self._chunk_latencies else 0.0  # measured chunk cost
         for key, p in self.predictor.rank(current, k=8):
             if self.graph.chunk(*key) is None:
-                self.scheduler.submit(key, p, bytes_hint)
-        warmed: list[Key] = []
+                self.scheduler.submit(key, p, cost_s=cost or None)
+        done: list[Key] = []
         # ponytail: generation runs right here, so `max_in_flight` only ever sees one job; the upgrade path is a
         # worker thread per in-flight slot that hands finished chunks back through `scheduler.done`.
-        while len(warmed) < budget and (key := self.scheduler.next()) is not None:
+        while len(done) < budget and (key := self.scheduler.next()) is not None:
             self.request_chunk(*key)
-            warmed.append(key)
-        return warmed
+            done.append(key)
+        drafts = [key for key, chunk in self.graph.chunks.items() if chunk.state == "draft"]
+        drafts.sort(key=lambda k: max(abs(k[0] - current[0]), abs(k[1] - current[1])))
+        for key in drafts[: budget - len(done)]:  # idle: nothing left to prewarm
+            self.request_chunk(*key, tier="refine")
+            self._counts["refined"] += 1
+            done.append(key)
+        return done
 
     def save(self, path: str | Path) -> None:
         meta = {"biome": self.biome, "chunk_size": self.chunk_size, "seed": self.seed}
@@ -201,15 +212,15 @@ class World:
                 if score >= self.threshold:
                     break
             asset, score = best
-            anchor = score < self.threshold
-            if anchor:
+            make_anchor = needs_fallback = score < self.threshold
+            if needs_fallback:
                 self._counts["fallbacks"] += 1
                 log.info("%s %s: coherence %.2f < %.2f, anchoring", chunk.key, cls, score, self.threshold)
                 existing = self.graph.best_asset(self.region, cls)
-                if existing is not None:
-                    asset, score, anchor = self.asset(existing), None, False
+                if existing is not None:  # the region's best asset of the class takes over; no new anchor
+                    asset, score, make_anchor = self.asset(existing), None, False
             self._assets[asset.id] = asset
-            for orphan in self.graph.add_asset(asset, chunk.key, cls, coherence=score, anchor=anchor):
+            for orphan in self.graph.add_asset(asset, chunk.key, cls, coherence=score, anchor=make_anchor):
                 self._assets.pop(orphan, None)
 
     def _evict(self, current: Key) -> None:

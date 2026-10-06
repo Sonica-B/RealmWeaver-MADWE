@@ -7,6 +7,7 @@ the generated textures, VRAM and allocator counters from `allocator_stats`, WFC 
 
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import platform
@@ -30,7 +31,9 @@ from realmweaver.world import Predictor
 log = logging.getLogger(__name__)
 
 SCHEMA = 1
-REFERENCE_DIR = Path("data/raw/textures")  # the FID/KID reference set, relative to the repo root
+# ponytail: the FID/KID reference set is a path relative to the repo root, where the bench runs from; a
+# `Settings.reference_dir` beside `reports_dir` is the upgrade path.
+REFERENCE_DIR = Path("data/raw/textures")
 # The 2025 pitch numbers (plan, ADR-0005): written into every report as targets beside the measurements.
 TARGETS_2025 = dict(fid=32.4, s_per_asset=2.7, textures_per_min=120, tileable_pct=94, style=0.89, vram_gb=6.2)
 _WARMUPS = 3  # uncounted generations before the timed loop
@@ -56,23 +59,52 @@ def _specs(biomes: list[str], n: int, seed: int, size: int) -> list[AssetSpec]:
 
 
 def _timed_run(generator: Generator, specs: list[AssetSpec]) -> tuple[list[Asset], float, dict | None]:
-    """Warm up, then generate `specs` in one timed loop: (assets, wall seconds, allocator stats or None)."""
+    """Warm up, then generate `specs` in one timed loop: (assets, wall seconds, allocator stats or None).
+
+    The stats add `resident_bytes`, allocated before the loop, and `reserved_minus_allocated_bytes`, the mean over
+    the loop's images of the allocator's reserved minus allocated bytes read right after each one.
+    """
     if callable(getattr(generator, "warmup", None)):
         for b in dict.fromkeys(s.biome for s in specs):
             generator.warmup(b)
     for i in range(_WARMUPS):
         generator.generate(specs[i % len(specs)])
-    gpu, resident = callable(getattr(generator, "allocator_stats", None)), 0
-    if gpu:
-        import torch  # already imported by any generator that has allocator stats
+    if not callable(getattr(generator, "allocator_stats", None)):
+        t0 = time.perf_counter()
+        assets = [generator.generate(s) for s in specs]
+        return assets, time.perf_counter() - t0, None
+    import torch  # already imported by any generator that has allocator stats
 
-        generator.reset_stats()
-        resident = int(torch.cuda.memory_allocated(generator.device))
+    generator.reset_stats()
+    device, assets, gaps = generator.device, [], []
+    resident = int(torch.cuda.memory_allocated(device))
     t0 = time.perf_counter()
-    assets = [generator.generate(s) for s in specs]
+    for s in specs:
+        assets.append(generator.generate(s))
+        gaps.append(torch.cuda.memory_reserved(device) - torch.cuda.memory_allocated(device))
     wall = time.perf_counter() - t0
-    stats = {"resident_bytes": resident, **generator.allocator_stats()} if gpu else None
-    return assets, wall, stats
+    stats = {"resident_bytes": resident, **generator.allocator_stats()}
+    return assets, wall, {**stats, "reserved_minus_allocated_bytes": int(statistics.fmean(gaps))}
+
+
+def _allocator_ab(make_generator: Callable[[bool], Generator], specs: list[AssetSpec]) -> dict[str, dict]:
+    """The two allocator arms, pool on then off: each a fresh generator from `make_generator`, measured like the
+    main run and released (with the allocator cache emptied) before the next one is built."""
+    arms = {}
+    for pool in (True, False):
+        arm = make_generator(pool)
+        assets, _, stats = _timed_run(arm, specs)
+        if stats is None:
+            raise RuntimeError(
+                f"make_generator({pool}) built {type(arm).__name__}, which has no allocator stats"
+            )
+        import torch  # the arm has allocator stats, so torch is already imported
+
+        del arm
+        gc.collect()
+        torch.cuda.empty_cache()
+        arms["pool_on" if pool else "pool_off"] = {**stats, "latency_s": _latency(assets), "n": len(assets)}
+    return arms
 
 
 def _latency(assets: list[Asset]) -> dict[str, float]:
@@ -136,15 +168,15 @@ def run_bench(
     seed: int,
     out_dir: Path,
     with_fid: bool,
-    pool_ab: bool,
     embed: Callable[[np.ndarray], np.ndarray] | None = None,
+    make_generator: Callable[[bool], Generator] | None = None,
 ) -> Path:
     """Measure everything on `generator` and write `out_dir/bench-<YYYYMMDD-HHMMSS>.json`; returns its path.
 
     `n` is the total number of draft seamless textures, cycled over `biomes`. `embed` maps an image to a style
     vector (`DinoEmbedder` on a GPU; the histogram embedding when None). `with_fid` adds FID/KID against
-    `REFERENCE_DIR`; `pool_ab` adds the allocator A/B through a second instance of a generator that has a
-    memory pool and is ignored otherwise.
+    `REFERENCE_DIR`. `make_generator(pool_on)` builds one allocator A/B arm: when it is given and `generator` has
+    allocator stats, both arms are measured after the main run (it is ignored otherwise).
     """
     cfg, name, stamp = settings(), type(generator).__name__, datetime.now().astimezone()
     size, chunk = cfg.asset_size, cfg.chunk_size
@@ -152,17 +184,10 @@ def run_bench(
     log.info("bench: %d textures over %s with %s", n, biomes, name)
     assets, wall, stats = _timed_run(generator, specs)
     allocator = None
-    if pool_ab and stats is not None:
-        # ponytail: the second arm runs in this process with the first pipeline still resident, so its peaks
+    if make_generator is not None and stats is not None:
+        # ponytail: both arms run in this process with `generator`'s pipeline still resident, so their peaks
         # include those weights (subtract resident_bytes). Separate processes per arm would be cleaner.
-        on = getattr(generator, "pool", None) is not None
-        loras = getattr(generator, "_biome_loras", None)  # DiffusionGenerator keeps the mapping private
-        other = type(generator)(settings=generator.settings, pool=not on, biome_loras=loras)
-        other_assets, _, other_stats = _timed_run(other, specs)
-        del other
-        first, second = ("pool_on", "pool_off") if on else ("pool_off", "pool_on")
-        arms = {first: (stats, assets), second: (other_stats, other_assets)}
-        allocator = {k: {**s, "latency_s": _latency(a), "n": len(a)} for k, (s, a) in arms.items()}
+        allocator = _allocator_ab(make_generator, specs)
     embed = embed or histogram_embed
     images = [a.image for a in assets]
     ratios = [tileability(img) for img in images]
@@ -187,12 +212,23 @@ def run_bench(
     if stats is None:
         notes.append(f"vram and allocator need the diffusion generator; this run used {name}")
     if allocator is not None:
-        notes.append("allocator: the second arm ran with the first pipeline resident (see resident_bytes)")
+        notes.append(
+            "allocator: each arm is a fresh generator from make_generator, pool on then off, run with the "
+            "benchmarked generator's pipeline still resident (see resident_bytes); reserved_minus_allocated_bytes "
+            "is the mean over its timed images of bytes reserved minus allocated right after each image"
+        )
     report = {
         "schema": SCHEMA,
         "timestamp": stamp.isoformat(timespec="seconds"),
         "env": _env(name, cfg.device),
-        "params": {"n": n, "seed": seed, "biomes": list(biomes), "size": size, "steps": specs[0].steps},
+        "params": {
+            "n": n,
+            "seed": seed,
+            "biomes": list(biomes),
+            "size": size,
+            "steps": specs[0].steps,
+            "chunk": chunk,
+        },
         "latency_s": _latency(assets),
         "assets_per_min": len(assets) / wall * 60,
         "tileability": {"mean_ratio": float(statistics.fmean(ratios)), "share_leq_1_2": share},

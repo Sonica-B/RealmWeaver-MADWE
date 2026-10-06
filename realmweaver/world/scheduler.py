@@ -17,21 +17,22 @@ def _distance(a: Key, b: Key) -> int:
 class Scheduler:
     def __init__(self, cost_s: float = 1.0, max_in_flight: int = 2, cache_bytes: int = 512 << 20) -> None:
         self.cost_s, self.max_in_flight, self.cache_bytes = cost_s, max_in_flight, cache_bytes
-        self._pending: dict[Key, tuple[float, int]] = {}  # key -> (score, bytes hint)
+        self._pending: dict[Key, float] = {}  # key -> score
         self._in_flight: set[Key] = set()
         self._cached: OrderedDict[Key, int] = OrderedDict()  # key -> bytes, least recently used first
         self.bytes_used = 0
 
-    def submit(self, key: Key, priority: float, bytes_hint: int, cost_s: float | None = None) -> None:
-        """Queue `key` at score priority / cost; a resubmission replaces the score, a cached or running key is ignored."""
+    def submit(self, key: Key, priority: float, cost_s: float | None = None) -> None:
+        """Queue `key` at score priority / cost, `cost_s` being the measured chunk cost (the constructor's prior when
+        None); a resubmission replaces the score, a cached or running key is ignored."""
         if key not in self._cached and key not in self._in_flight:
-            self._pending[key] = (priority / (self.cost_s if cost_s is None else cost_s), bytes_hint)
+            self._pending[key] = priority / (self.cost_s if cost_s is None else cost_s)
 
     def next(self) -> Key | None:
         """Hand out the best pending key and count it in flight; None when nothing is pending or the cap is reached."""
         if len(self._in_flight) >= self.max_in_flight or not self._pending:
             return None
-        key = max(self._pending, key=lambda k: self._pending[k][0])
+        key = max(self._pending, key=self._pending.__getitem__)
         del self._pending[key]
         self._in_flight.add(key)
         return key
@@ -57,6 +58,9 @@ class Scheduler:
         for key in [k for k in self._pending if _distance(k, current) > HORIZON]:
             del self._pending[key]
         evicted: list[Key] = []
+        # ponytail: every eviction rescans the whole cache (O(n) per victim, O(n^2) when the cap forces many out);
+        # a heap over (distance, age) maintained by `touch` and `done` is the upgrade path for caches of thousands
+        # of chunks.
         while self.bytes_used > self.cache_bytes:
             age = {k: i for i, k in enumerate(self._cached)}
             candidates = [k for k in self._cached if k != current]

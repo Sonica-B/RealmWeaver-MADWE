@@ -35,18 +35,19 @@ class DiffusionGenerator(Generator):
     """The GPU asset agent: `generate(spec) -> Asset` on SD1.5 fp16 with every weight resident on the device.
 
     `pool=True` hands the pipeline one reused latent buffer, caches prompt embeds per (biome, kind, subject, tier)
-    and replays the UNet step from CUDA graphs captured per (adapters, padding, shape). `compile=True` hands the
-    UNet forward to `torch.compile(mode="reduce-overhead")` instead of the pool's graphs (needs triton; off by
-    default). `biome_loras` maps a biome name to a LoRA directory, file or hub id and falls back to the biome's
-    `lora:` field.
+    and replays the UNet step from CUDA graphs captured per (adapters, padding, CFG, input shapes and dtypes).
+    `torch.compile` is not offered: it needs triton, which this environment cannot test, so the pool's graphs are
+    the only no-dispatch path. `biome_loras` maps a biome name to a LoRA directory, file or hub id and falls back
+    to the biome's `lora:` field. `pipe` is a prepared `StableDiffusionPipeline` (on the device, DDIM trailing
+    scheduler, draft/refine LoRAs loaded); it is built from the settings when None.
     """
 
     def __init__(
         self,
         settings: Settings | None = None,
         pool: bool = True,
-        compile: bool = False,
         biome_loras: dict[str, str] | None = None,
+        pipe: Any | None = None,
     ) -> None:
         self.settings = settings or load_settings()
         if not self.settings.device.startswith("cuda") or not torch.cuda.is_available():
@@ -54,18 +55,16 @@ class DiffusionGenerator(Generator):
                 "DiffusionGenerator needs a CUDA device (settings().device); use ProceduralGenerator on CPU"
             )
         self.device = torch.device(self.settings.device)
-        self._pipe = self._load_pipeline()
+        self._pipe = pipe if pipe is not None else self._load_pipeline()
         self._pool = MemoryPool(self.settings.asset_size, device=self.settings.device) if pool else None
         self._biome_loras = dict(biome_loras or {})
         self._biome_adapters: dict[str, bool] = {}
         self._active: tuple[str, ...] = ()
         self._seamless: bool | None = None
+        self._cfg = False  # classifier-free guidance doubles the UNet batch; part of the captured-graph key
         self._white: dict[int, torch.Tensor] = {}
         self._eager_unet = self._pipe.unet.forward
-        if compile:
-            self._pipe.unet.forward = torch.compile(self._eager_unet, mode="reduce-overhead", dynamic=False)
-            log.info("UNet forward wrapped in torch.compile; the first generation pays the cold start")
-        elif self._pool is not None:
+        if self._pool is not None:
             self._pipe.unet.forward = self._graphed_unet
 
     @property
@@ -123,8 +122,9 @@ class DiffusionGenerator(Generator):
     def _graphed_unet(
         self, sample: torch.Tensor, timestep: torch.Tensor, encoder_hidden_states: torch.Tensor, **kwargs: Any
     ) -> tuple[torch.Tensor]:
-        """UNet forward replacement: replay the graph the pool holds for the current adapters, padding and shapes."""
-        key = (self._active, self._seamless, tuple(sample.shape), tuple(encoder_hidden_states.shape))
+        """UNet forward replacement: replay the graph the pool holds for the current adapters, padding mode and
+        CFG flag; the pool keys the inputs' shapes and dtypes and the kwargs itself."""
+        key = (self._active, self._seamless, self._cfg)
         return (self._pool.step(key, self._eager_unet, sample, timestep, encoder_hidden_states, **kwargs),)
 
     def _white_latent(self, size: int) -> torch.Tensor:
@@ -158,6 +158,7 @@ class DiffusionGenerator(Generator):
         t0 = time.perf_counter()
         biome = load_biome(spec.biome)
         guidance, min_steps = _TIERS[spec.tier]
+        self._cfg = guidance > 1.0
         self._activate(spec.tier, biome)
         self._set_seamless(spec.seamless and spec.kind == "texture")
         embeds, negative_embeds = self._embeds(spec, biome)

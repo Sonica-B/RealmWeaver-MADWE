@@ -1,6 +1,8 @@
 """Benchmark at the seam: one JSON report holding every metric, written here by the CPU baseline generator."""
 
+import gc
 import json
+import math
 import platform
 import re
 from pathlib import Path
@@ -9,8 +11,8 @@ import pytest
 
 from realmweaver.assets import ProceduralGenerator
 from realmweaver.config import settings
-from realmweaver.metrics.bench import REFERENCE_DIR, TARGETS_2025, latest_report, run_bench
-from realmweaver.metrics.fid import kid_fid
+from realmweaver.metrics import kid_fid, latest_report, run_bench
+from realmweaver.metrics.bench import REFERENCE_DIR, TARGETS_2025
 from realmweaver.types import AssetSpec
 
 TOP_LEVEL = {
@@ -38,9 +40,7 @@ def report(tmp_path_factory) -> tuple[Path, dict]:
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("REALMWEAVER_DEVICE", "cpu")
         out = tmp_path_factory.mktemp("reports")
-        path = run_bench(
-            ProceduralGenerator(), ["forest"], n=4, seed=0, out_dir=out, with_fid=False, pool_ab=False
-        )
+        path = run_bench(ProceduralGenerator(), ["forest"], n=4, seed=0, out_dir=out, with_fid=False)
     return path, json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -80,7 +80,7 @@ def test_latest_report_returns_the_newest_by_name(report, tmp_path):
 
 def test_params_env_and_targets_are_recorded(report):
     rep = report[1]
-    assert rep["params"] == {"n": 4, "seed": 0, "biomes": ["forest"], "size": 512, "steps": 4}
+    assert rep["params"] == {"n": 4, "seed": 0, "biomes": ["forest"], "size": 512, "steps": 4, "chunk": 16}
     env = rep["env"]
     assert env["generator"] == "ProceduralGenerator" and env["python"] == platform.python_version()
     assert env["gpu"] is None and env["vram_gb"] is None and env["torch"] and env["diffusers"]
@@ -97,13 +97,7 @@ def test_notes_carry_the_reference_set_caveat(report):
 def test_two_biomes_give_a_positive_style_contrast(tmp_path, monkeypatch):
     monkeypatch.setenv("REALMWEAVER_DEVICE", "cpu")
     path = run_bench(
-        ProceduralGenerator(),
-        ["forest", "desert"],
-        n=4,
-        seed=1,
-        out_dir=tmp_path,
-        with_fid=False,
-        pool_ab=False,
+        ProceduralGenerator(), ["forest", "desert"], n=4, seed=1, out_dir=tmp_path, with_fid=False
     )
     rep = json.loads(path.read_text(encoding="utf-8"))
     assert rep["params"]["biomes"] == ["forest", "desert"] and rep["style_consistency"] > 0
@@ -130,3 +124,61 @@ def test_kid_fid_reports_fid_and_kid_at_fixed_n():
     assert set(out) == {"fid", "kid_mean", "kid_std", "n"} and out["n"] == 8
     assert out["fid"] >= 0 and out["kid_std"] >= 0 and all(abs(v) < float("inf") for v in out.values())
     assert kid_fid(REFERENCE_DIR, fakes, n=8, seed=0)["fid"] == pytest.approx(out["fid"])
+
+
+def test_make_generator_is_only_used_by_a_generator_with_allocator_stats(tmp_path, monkeypatch):
+    monkeypatch.setenv("REALMWEAVER_DEVICE", "cpu")
+    built: list[bool] = []
+
+    def make(pool: bool) -> ProceduralGenerator:
+        built.append(pool)
+        return ProceduralGenerator()
+
+    path = run_bench(
+        ProceduralGenerator(), ["forest"], n=2, seed=0, out_dir=tmp_path, with_fid=False, make_generator=make
+    )
+    rep = json.loads(path.read_text(encoding="utf-8"))
+    assert built == [] and rep["allocator"] is None and any("allocator" in note for note in rep["notes"])
+
+
+def test_kid_fid_takes_an_injected_feature_extractor(monkeypatch):
+    monkeypatch.setenv("REALMWEAVER_DEVICE", "cpu")
+    torch = pytest.importorskip("torch")
+
+    class MeanRGB(torch.nn.Module):  # uint8 [N, 3, 299, 299] -> [N, 3] channel means in [0, 1]; no download
+        def forward(self, x):
+            return x.float().mean(dim=(2, 3)) / 255
+
+    g = ProceduralGenerator()
+    fakes = [g.generate(AssetSpec("forest", subject="grass", size=32, seed=s)).image for s in range(4)]
+    out = kid_fid(REFERENCE_DIR, fakes, n=4, seed=0, extractor=MeanRGB())
+    assert set(out) == {"fid", "kid_mean", "kid_std", "n"} and out["n"] == 4
+    assert all(math.isfinite(v) for v in out.values()) and out["kid_std"] >= 0
+
+
+@pytest.mark.gpu
+def test_pool_ab_arms_come_from_make_generator_and_record_the_allocator_gap(tmp_path):
+    torch = pytest.importorskip("torch")
+    if not (settings().device.startswith("cuda") and torch.cuda.is_available()):
+        pytest.skip("needs CUDA (and REALMWEAVER_DEVICE not forced to cpu)")
+    from realmweaver.assets import DiffusionGenerator
+
+    gc.collect()
+    torch.cuda.empty_cache()  # pipelines other GPU test modules left behind
+    built: list[bool] = []
+
+    def make(pool: bool) -> DiffusionGenerator:
+        built.append(pool)
+        return DiffusionGenerator(pool=pool)
+
+    path = run_bench(
+        DiffusionGenerator(), ["forest"], n=2, seed=0, out_dir=tmp_path, with_fid=False, make_generator=make
+    )
+    rep = json.loads(path.read_text(encoding="utf-8"))
+    arms = rep["allocator"]
+    assert built == [True, False] and set(arms) == {"pool_on", "pool_off"}
+    for arm in arms.values():
+        assert arm["n"] == 2 and arm["latency_s"]["p50"] > 0 and arm["reserved_minus_allocated_bytes"] >= 0
+        assert arm["max_memory_reserved"] >= arm["max_memory_allocated"] >= arm["resident_bytes"] > 0
+    assert rep["vram"]["peak_allocated_gb"] > 0
+    assert any("reserved_minus_allocated_bytes" in note for note in rep["notes"])

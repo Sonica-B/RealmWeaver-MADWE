@@ -54,7 +54,7 @@ def test_tick_prewarms_the_chunk_ahead_of_the_player():
 
 @pytest.fixture
 def small_assets(monkeypatch):
-    """64 px assets make a chunk cost milliseconds; the plan's tests above keep the default asset size."""
+    """64 px assets keep these chunks small; the plan's tests above keep the default asset size."""
     monkeypatch.setenv("REALMWEAVER_ASSET_SIZE", "64")
 
 
@@ -141,3 +141,102 @@ def test_chunk_solved_against_four_neighbours_is_the_same_object_on_every_reques
     assert mid is w.request_chunk(0, 0) and set(w.graph.neighbours(0, 0)) == {"N", "E", "S", "W"}
     # diagonal neighbours are never constrained against each other, so a corner may keep one mismatch
     assert w.stats()["seam_violations"] <= 4 and w.graph.validate() == []
+
+
+# --- story 12: drift, regeneration with the next seed, anchor fallback -----------------------------------
+
+_DIM = 128  # style vectors below are unit vectors: e0 is the region's first asset, every other call gets its own axis
+
+
+class _Attempts:
+    """`Generator` adapter over the procedural one that groups the specs it sees into runs: the world retries a
+    tile class with the next seed, so a spec whose seed follows the previous one's for the same subject is a
+    retry, and `attempt` is the index of the latest spec within its run."""
+
+    def __init__(self) -> None:
+        self.inner, self.runs = ProceduralGenerator(), []
+
+    def generate(self, spec):
+        last = self.runs[-1][-1] if self.runs else None
+        if last is not None and last.subject == spec.subject and spec.seed == last.seed + 1:
+            self.runs[-1].append(spec)
+        else:
+            self.runs.append([spec])
+        return self.inner.generate(spec)
+
+    @property
+    def attempt(self) -> int:
+        return len(self.runs[-1]) - 1
+
+
+def _embed_by_attempt(gen: _Attempts, cosines: tuple[float, ...]):
+    """Style vectors with a chosen cosine to the first asset's vector e0: the first asset embeds to e0, every later
+    one to `cosines[attempt]` times e0 plus its own orthogonal axis, so its coherence is at most that cosine."""
+    calls = 0
+
+    def embed(_image: np.ndarray) -> np.ndarray:
+        nonlocal calls
+        calls += 1
+        c = 1.0 if calls == 1 else cosines[min(gen.attempt, len(cosines) - 1)]
+        vec = np.zeros(_DIM)
+        vec[0], vec[calls] = c, np.sqrt(1.0 - c * c)
+        return vec
+
+    return embed
+
+
+def test_below_threshold_asset_is_regenerated_with_the_next_seed_until_it_passes(small_assets):
+    gen = _Attempts()
+    w = World("forest", gen, _embed_by_attempt(gen, cosines=(0.0, 1.0)), chunk_size=8, seed=21)
+    c = w.request_chunk(0, 0)
+    present = {c.layout.class_at(x, y) for x in range(8) for y in range(8)}
+    s = w.stats()
+    assert s["regenerations"] == len(present) - 1 and s["fallbacks"] == 0  # the first asset sets the style
+    assert present <= set(c.asset_ids) and w.graph.validate() == []
+    assert [len(run) for run in gen.runs] == [1] + [2] * (len(present) - 1)
+    for first, second in gen.runs[
+        1:
+    ]:  # the orthogonal first try fails; the next seed's asset is the one kept
+        assert second.seed == first.seed + 1 and c.asset_ids[first.subject] == second.id
+    assert all(w.graph.coherence(a) >= w.threshold for a in c.asset_ids.values())
+
+
+def test_when_every_attempt_fails_the_best_candidate_is_anchored_and_later_chunks_reuse_the_regions_best(
+    small_assets,
+):
+    gen = _Attempts()
+    w = World("forest", gen, _embed_by_attempt(gen, cosines=(0.1, 0.3, 0.2)), chunk_size=8, seed=22)
+    first = w.request_chunk(0, 0)
+    present = {first.layout.class_at(x, y) for x in range(8) for y in range(8)}
+    s = w.stats()
+    assert s["fallbacks"] == len(present) - 1 and s["regenerations"] == 2 * (len(present) - 1)
+    assert present <= set(first.asset_ids) and w.graph.validate() == []
+    for run in gen.runs[
+        1:
+    ]:  # three tries and no asset of the class in the region yet: the best try (0.3) stays
+        assert len(run) == 3 and first.asset_ids[run[0].subject] == run[1].id
+    second = w.request_chunk(1, 0)
+    shared = set(second.asset_ids) & set(first.asset_ids)
+    assert shared and w.graph.validate() == []
+    for cls in shared:  # every try fails again, so the class is anchored to the region's best asset of it
+        assert second.asset_ids[cls] == first.asset_ids[cls] == w.graph.best_asset("forest", cls)
+    assert w.stats()["fallbacks"] == len(present) - 1 + len(second.asset_ids)
+
+
+def test_tick_refines_the_nearest_draft_chunks_once_nothing_is_left_to_prewarm(small_assets):
+    # one constant style vector keeps every candidate coherent, so only the refine pass itself is under test
+    w = World("forest", ProceduralGenerator(), embed=lambda _image: np.ones(4), chunk_size=8, seed=13)
+    w.request_chunk(0, 0)
+    w.observe_player(4.0, 4.0)  # in (0, 0) with no heading yet: every neighbour is a prewarm candidate
+    warmed = w.tick(budget=1)  # draft first: a neighbour is generated, nothing refined
+    assert warmed and w.stats()["refined"] == 0
+    for key in [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)]:
+        w.request_chunk(*key)
+    refined = w.tick(budget=2)
+    assert refined[0] == (0, 0) and len(refined) == 2 and w.stats()["refined"] == 2
+    here = w.graph.chunk(0, 0)
+    specs = [w.graph.asset_spec(a) for a in here.asset_ids.values()]
+    assert here.state == "ready" and all(s.tier == "refine" and s.steps == 8 for s in specs)
+    assert w.graph.chunk(*refined[1]).state == "ready" and len(w.tick(budget=10)) == 7 and w.tick() == []
+    assert w.stats()["refined"] == 9 and w.stats()["chunks"] == 9 and w.graph.validate() == []
+    assert all(c.state == "ready" for c in w.graph.chunks.values())

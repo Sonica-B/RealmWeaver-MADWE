@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import torch
 
@@ -11,12 +13,23 @@ from realmweaver.config import settings
 class DinoEmbedder:
     """Callable `image -> style vector`. Runs on `settings().device` unless `device` is given; CPU works too."""
 
-    def __init__(self, model_id: str = "facebook/dinov2-small", device: str | None = None) -> None:
-        from transformers import AutoImageProcessor, AutoModel
-
+    def __init__(
+        self,
+        model_id: str = "facebook/dinov2-small",
+        device: str | None = None,
+        model: Any | None = None,
+        processor: Any | None = None,
+    ) -> None:
+        """`model` and `processor` are a transformers `AutoModel` / `AutoImageProcessor` pair; either one not
+        given is loaded from `model_id`."""
         self.device = torch.device(device or settings().device)
-        self._processor = AutoImageProcessor.from_pretrained(model_id)
-        self._model = AutoModel.from_pretrained(model_id).to(self.device).eval()
+        if processor is None or model is None:
+            from transformers import AutoImageProcessor, AutoModel
+
+            processor = AutoImageProcessor.from_pretrained(model_id) if processor is None else processor
+            model = AutoModel.from_pretrained(model_id) if model is None else model
+        self._processor = processor
+        self._model = model.to(self.device).eval()
         self.dim = int(self._model.config.hidden_size)
 
     @torch.inference_mode()

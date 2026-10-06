@@ -53,24 +53,26 @@ def _inception_batch(images: list[np.ndarray]) -> Any:
     return torch.cat(out)
 
 
-def kid_fid(real_dir: Path, fakes: list[np.ndarray], n: int, seed: int) -> dict:
+def kid_fid(real_dir: Path, fakes: list[np.ndarray], n: int, seed: int, extractor: Any | None = None) -> dict:
     """FID and KID between `n` reference images under `real_dir` and `n` of `fakes`, both picked with `seed`.
 
     `n` is capped by what either side has and recorded in the result; fewer than two images on a side skips.
+    `extractor` is a feature network for torchmetrics' `feature=` (uint8 `[N, 3, 299, 299]` -> `[N, d]`); the
+    InceptionV3 pool3 features are fetched when it is None.
     """
     paths = reference_images(real_dir)
     n = min(n, len(paths), len(fakes))
     if n < 2:
         return {"skipped": f"need 2+ images per side: {len(paths)} under {real_dir}, {len(fakes)} generated"}
     try:
-        # ponytail: Inception pool3 features only; FD-DINOv2 or CMMD judge diffusion output more fairly
-        # (docs/research/02 section 5.1) and would slot in here as a second feature extractor.
+        # ponytail: Inception pool3 features by default; FD-DINOv2 or CMMD judge diffusion output more fairly
+        # (docs/research/02 section 5.1) and slot in through `extractor`, unreported until a bench records them.
         from torchmetrics.image.fid import FrechetInceptionDistance
         from torchmetrics.image.kid import KernelInceptionDistance
 
-        device = _device()
-        fid = FrechetInceptionDistance().to(device)
-        kid = KernelInceptionDistance(subset_size=min(_MAX_SUBSET, n)).to(device)
+        device, feature = _device(), 2048 if extractor is None else extractor
+        fid = FrechetInceptionDistance(feature=feature).to(device)
+        kid = KernelInceptionDistance(feature=feature, subset_size=min(_MAX_SUBSET, n)).to(device)
     except Exception as e:  # the weights come over the network at construction; offline means no metric
         log.warning("FID/KID skipped: %s", e)
         return {"skipped": f"inception features unavailable: {type(e).__name__}: {e}"}

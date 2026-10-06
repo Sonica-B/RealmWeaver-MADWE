@@ -72,7 +72,7 @@ def _sprite(rgb: np.ndarray, noise: np.ndarray) -> np.ndarray:
 
 
 class ProceduralGenerator:
-    """`Generator` adapter that needs no model: same spec, same pixels, in milliseconds."""
+    """`Generator` adapter that needs no model: same spec, same pixels, on any machine."""
 
     def __init__(self, seed_salt: int = 0) -> None:
         self.seed_salt = seed_salt

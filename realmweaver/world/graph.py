@@ -11,6 +11,7 @@ import copy
 import logging
 from collections import Counter
 from dataclasses import asdict
+from typing import Literal
 
 import networkx as nx
 import numpy as np
@@ -23,6 +24,7 @@ STYLE_ALPHA = 0.2  # EMA weight of each new asset in its region's style vector
 WORLD = "world"
 _PARENT_KIND = {"Region": "World", "Chunk": "Region", "Tile": "Chunk"}
 _EPS = 1e-9
+ChunkState = Literal["pending", "draft", "ready"]
 
 
 def _cos(a: np.ndarray, b: np.ndarray) -> float:
@@ -141,8 +143,8 @@ class WorldStateGraph:
             self.g.nodes[anode]["anchored"] = True
         return dropped
 
-    def set_state(self, chunk_key: tuple[int, int], state: str) -> None:
-        self.chunks[chunk_key].state = state  # type: ignore[assignment]
+    def set_state(self, chunk_key: tuple[int, int], state: ChunkState) -> None:
+        self.chunks[chunk_key].state = state
         self.g.nodes[_chunk_node(*chunk_key)]["state"] = state
 
     def remove_chunk(self, chunk_key: tuple[int, int]) -> list[str]:
