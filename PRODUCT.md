@@ -55,3 +55,7 @@ Name: RealmWeaver, subtitle MADWE. Authors listed in README: Ankit Gole and Shre
 ## Accessibility & Inclusion
 
 Operator page must be keyboard-navigable, colour never the sole signal for status, and text contrast meets WCAG AA.
+
+## Direction (2026-10-06)
+
+The product is growing from an asset engine into a single-player open-world action RPG, working title **Emberfall**, in the vein of Crimson Desert at roughly one quarter of its scale. Plan: `docs/superpowers/specs/2026-10-06-emberfall-game-design.md`. The web platform above now describes the **content studio** (operator page → approval queues, world graph browser, benchmarks); the game client runs in a game engine (Unreal Engine 5.8 preferred, Unity 6.3 fallback — owner decision pending). Users add: players of a finite single-player adventure (60-minute sessions, gamepad or keyboard); content reviewers approving generated meshes, quests and NPC personas. Undecided: engine, art direction, playable character, regions, antagonist, voice strategy (tracked as wayfinder tickets).
