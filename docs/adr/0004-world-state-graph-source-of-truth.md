@@ -10,3 +10,6 @@ Coherence across chunks needs one place that knows every region, chunk, tile and
 
 ## Consequences
 No database. Graph size is bounded by the byte-capped cache. The embedder is injected so tests run on CPU with a histogram embedder.
+
+## Amendment (2026-10-06, architecture review C4)
+"Validated records" is delivered by one record schema (`realmweaver/world/records.py`): node kinds with their attributes and edge kinds with their allowed pairs, declared once. `add`/`link` validate on write; `validate`, `to_json` and `from_json` derive from the same tables. The game's kinds (Region3D, Settlement, Landmark, NPC, Memory, Quest, Objective, Faction, Event, Save; edges KNOWS, ASSIGNED, MEMBER_OF, TRIGGERS) are rows in those tables, not new graph methods.

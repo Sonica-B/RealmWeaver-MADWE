@@ -359,7 +359,7 @@ class World:
         neighbour of another tileset is no constraint, which the first such pair of regions logs."""
         seed = _stable_seed(self.seed, cx, cy, "layout")
         layouts: dict[str, Layout] = {}
-        for side, other in self._graph.neighbours(cx, cy).items():
+        for side, other in self._graph.neighbour_chunks(cx, cy).items():
             theirs = self.region_at(other.cx, other.cy)
             if region.shares_tileset(theirs):
                 layouts[side] = other.layout

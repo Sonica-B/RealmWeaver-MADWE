@@ -330,3 +330,46 @@ def test_facts_for_reads_a_region_through_the_graph_public_api():
     assert "2 chunks generated" in fact.value and "ground seen: grass, water" in fact.value
     with pytest.raises(KeyError):
         facts_for(graph, "Mara Vell", "desert")
+
+
+def test_facts_for_adds_what_the_npc_record_knows():
+    graph = WorldStateGraph(seed=0)
+    graph.add_region("forest", "forest")
+    graph.add("NPC", "npc:Mara Vell", name="Mara Vell", role="innkeeper")
+    graph.link("CONTAINS", "region:forest", "npc:Mara Vell")
+    graph.add("NPC", "npc:Pell", name="Pell", description="the stable boy at the Gilded Flagon")
+    graph.link("CONTAINS", "region:forest", "npc:Pell")
+    graph.add(
+        "Quest", "quest:rats", name="Rats in the Cellar", description="Mara pays 10 copper for the rats"
+    )
+    graph.link("CONTAINS", "world", "quest:rats")
+    graph.add("Faction", "faction:hearthguild", name="Hearthguild", description="the innkeepers' guild")
+    graph.link("CONTAINS", "world", "faction:hearthguild")
+    graph.add(
+        "Region3D", "region3d:vale", name="vale", cells=[8, 8], cell_m=30.0, biome_shares={"forest": 1.0}
+    )
+    graph.link("CONTAINS", "world", "region3d:vale")
+    graph.add("Settlement", "settlement:emberfall", name="Emberfall", x=3, y=4, biome="forest")
+    graph.link("CONTAINS", "region3d:vale", "settlement:emberfall")
+    graph.add("Asset", "asset:lantern", region="forest", nbytes=0, description="lost property behind the bar",
+              spec={"biome": "forest", "kind": "sprite", "subject": "Rusty Lantern"})  # fmt: skip
+    for known in ("npc:Pell", "quest:rats", "settlement:emberfall", "asset:lantern"):
+        graph.link("KNOWS", "npc:Mara Vell", known)
+    graph.link("MEMBER_OF", "npc:Mara Vell", "faction:hearthguild")
+    facts = facts_for(graph, "Mara Vell", "forest")
+    assert facts == [
+        Fact("place", "forest", "a forest region, 0 chunks generated"),
+        Fact("person", "Pell", "the stable boy at the Gilded Flagon"),
+        Fact("quest", "Rats in the Cellar", "Mara pays 10 copper for the rats"),
+        Fact("place", "Emberfall", ""),
+        Fact("item", "Rusty Lantern", "lost property behind the bar"),
+        Fact("faction", "Hearthguild", "the innkeepers' guild"),
+    ]
+    assert (
+        facts_for(graph, "Pell", "forest") == facts[:1] and facts_for(graph, "nobody", "forest") == facts[:1]
+    )
+    knowledge = Knowledge.build(facts, MARA)
+    offer = '{"act":"offer_quest","quest":"Rats in the Cellar","text":"Pell can lend you the Rusty Lantern."}'
+    assert verify_grounding(parse_action(offer), knowledge) is None
+    give = '{"act":"give","item":"Rusty Lantern","quantity":1,"text":"Mind the rats in the cellar."}'
+    assert verify_grounding(parse_action(give), knowledge) is None

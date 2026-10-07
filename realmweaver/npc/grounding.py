@@ -18,7 +18,7 @@ from realmweaver.npc.memory import Memory
 from realmweaver.npc.persona import Persona
 
 if TYPE_CHECKING:  # the graph is read through the world package's public interface; no import-time coupling
-    from realmweaver.world import WorldStateGraph
+    from realmweaver.world import Record, WorldStateGraph
 
 PLAYER_TEXT_MAX = 300  # characters of player speech kept per turn
 
@@ -69,6 +69,17 @@ _INJECTION = re.compile(
 )
 _LABELS = frozenset({"item", "quest"})  # matched whole against the facts' declared names, never read as prose
 _ENGINE_ONLY = frozenset({"reason"})  # `refuse.reason` goes to the engine and the log, never to the player
+# The fact kind a record an NPC KNOWS (or is a MEMBER_OF) is filed under; an Asset it knows is an item it may give.
+_FACT_KINDS = {
+    "NPC": "person",
+    "Settlement": "place",
+    "Landmark": "place",
+    "Region": "place",
+    "Region3D": "place",
+    "Quest": "quest",
+    "Faction": "faction",
+    "Asset": "item",
+}
 
 
 @dataclass(frozen=True)
@@ -216,14 +227,27 @@ def injection_markers(text: str) -> list[str]:
 
 def facts_for(graph: WorldStateGraph, npc_id: str, region: str) -> list[Fact]:
     """The world's facts for `npc_id`, read through the graph's public API: the region the NPC stands in, as
-    state (its biome, how many chunks exist so far and the tile classes seen in them).
+    state (its biome, how many chunks exist so far and the tile classes seen in them), then, when the graph holds
+    the NPC's record (`npc:<npc_id>`), one fact per record it KNOWS (a person, place, quest, faction or item by
+    the record's kind, its role and description as the value) and per faction it is a MEMBER_OF.
 
-    `npc_id` scopes nothing yet: the graph holds no NPC nodes and has no public region listing, so the caller names
-    the region. C4's record-driven schema (an NPC record CONTAINED by its Region) closes that gap and turns the
-    authored facts into graph reads too.
+    The caller still names the region: the graph has no public region listing and an NPC record is optional, so
+    the authored facts of a persona without one stay the caller's (the spike's `facts_of`).
     """
     record = graph.region(region)
     chunks = [chunk for key in sorted(record.chunks) if (chunk := graph.chunk(*key)) is not None]
     classes = sorted({cls for chunk in chunks for row in chunk.layout.class_rows() for cls in row})
     seen = f", ground seen: {', '.join(classes)}" if classes else ""
-    return [Fact("place", record.name, f"a {record.biome} region, {len(chunks)} chunks generated{seen}")]
+    facts = [Fact("place", record.name, f"a {record.biome} region, {len(chunks)} chunks generated{seen}")]
+    npc = graph.get(f"npc:{npc_id}")
+    if npc is not None:
+        known = graph.neighbours(npc.id, "KNOWS") + graph.neighbours(npc.id, "MEMBER_OF")
+        facts += [_fact(r) for r in known]
+    return facts
+
+
+def _fact(record: Record) -> Fact:
+    """A known record as the fact the NPC may state: an asset by its spec's subject, anything else by its name."""
+    name = record["spec"]["subject"] if record.kind == "Asset" else record["name"]
+    about = (record.attrs.get("role"), record.attrs.get("description"))
+    return Fact(_FACT_KINDS[record.kind], str(name), ", ".join(str(a) for a in about if a))

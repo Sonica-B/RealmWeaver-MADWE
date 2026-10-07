@@ -23,7 +23,8 @@ Domain language for RealmWeaver (MADWE). Code, tests, specs and ADRs use these w
 | **Style vector** | A DINOv2 image embedding of an asset; a biome's style vector is the running mean of its assets. |
 | **Coherence score** | 0.6 × cosine(asset, biome style vector) + 0.4 × mean cosine(asset, adjacent assets). Below the biome threshold the asset is regenerated, at most twice. |
 | **Style consistency** | Benchmark statistic: mean within-biome cosine minus cross-biome cosine of style vectors. |
-| **World state graph** | The typed property graph that is the source of truth for a world: World → Region → Chunk → Tile → Asset nodes with CONTAINS, ADJACENT, INSTANCE_OF and STYLE_ANCHOR edges. Agents write to it only through validated records. |
+| **World state graph** | The typed property graph that is the source of truth for a world: World → Region → Chunk → Tile → Asset nodes with CONTAINS, ADJACENT, INSTANCE_OF and STYLE_ANCHOR edges, plus the game's Region3D, Settlement, Landmark, NPC, Memory, Quest, Objective, Faction, Event and Save nodes with KNOWS, ASSIGNED, MEMBER_OF and TRIGGERS edges. Agents write to it only through validated records. |
+| **Record schema** | The one declaration (`realmweaver/world/records.py`) of every node kind with its required and optional attributes and every edge kind with the (source kind, target kind) pairs it may join. `WorldStateGraph.add` and `link` check each write against it; `validate`, `to_json` and `from_json` derive from it. A **record** is one node read back: its id, kind and attributes. |
 | **Region** | A contiguous set of chunks sharing one biome. |
 | **Prewarm** | Generating a chunk before the player requests it, based on the predictor. |
 | **Predictor** | Order-2 Markov model over eight quantised headings that ranks neighbour chunks by visit probability, falling back to order-1 then constant velocity. |

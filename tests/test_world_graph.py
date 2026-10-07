@@ -1,4 +1,5 @@
-"""World state graph: typed nodes and edges, region style, coherence, validation and JSON round trip."""
+"""World state graph: the record schema behind every write, typed nodes and edges, region style, coherence,
+validation and JSON round trip."""
 
 import numpy as np
 import pytest
@@ -8,7 +9,7 @@ from realmweaver.biomes import load_biome
 from realmweaver.layout import solve_chunk, tileset_from_example
 from realmweaver.metrics import histogram_embed
 from realmweaver.types import AssetSpec, Chunk, Layout
-from realmweaver.world import WorldStateGraph
+from realmweaver.world import EDGE_KINDS, NODE_KINDS, WorldStateGraph
 
 SIZE = 4
 
@@ -60,12 +61,95 @@ def test_coherence_is_a_cosine_blend_in_minus_one_to_one():
     assert style is not None and style.shape == (48,)
 
 
-def test_json_round_trip_keeps_nodes_and_edges():
+def _game_records(g):
+    """One record of every kind the chunk pipeline does not write, joined by every edge kind, as the game will
+    write them: a 3D region with a settlement and a landmark, an NPC with a memory, a faction, a quest with an
+    objective, an event and a save."""
+    g.add("Region3D", "region3d:vale", name="vale", cells=[8, 8], cell_m=30.0, biome_shares={"forest": 1.0})
+    g.link("CONTAINS", "world", "region3d:vale")
+    g.add("Settlement", "settlement:emberfall", name="Emberfall", x=3, y=4, biome="forest")
+    g.link("CONTAINS", "region3d:vale", "settlement:emberfall")
+    g.add("Landmark", "landmark:tower", name="Grey Tower", category="tower", x=6, y=1)
+    g.link("CONTAINS", "region3d:vale", "landmark:tower")
+    g.add("NPC", "npc:mara", name="Mara Vell", role="innkeeper")
+    g.link("CONTAINS", "settlement:emberfall", "npc:mara")
+    g.add(
+        "Memory", "memory:mara/0", text="Rats gnawed three grain sacks", t=6.0, importance=0.5, source="world"
+    )
+    g.link("CONTAINS", "npc:mara", "memory:mara/0")
+    g.add("Faction", "faction:hearthguild", name="Hearthguild")
+    g.link("CONTAINS", "world", "faction:hearthguild")
+    g.add("Quest", "quest:rats", name="Rats in the Cellar", description="clear the cellar", state="offered")
+    g.link("CONTAINS", "world", "quest:rats")
+    g.add("Objective", "objective:rats/0", name="Kill five rats")
+    g.link("CONTAINS", "quest:rats", "objective:rats/0")
+    g.add("Event", "event:fair", name="Harvest fair", t=216.0)
+    g.link("CONTAINS", "world", "event:fair")
+    g.add("Save", "save:auto-0", name="autosave 0", t=18.5)
+    g.link("CONTAINS", "world", "save:auto-0")
+    g.link("KNOWS", "npc:mara", "quest:rats")
+    g.link("KNOWS", "npc:mara", "landmark:tower")
+    g.link("ASSIGNED", "quest:rats", "npc:mara")
+    g.link("ASSIGNED", "objective:rats/0", "settlement:emberfall")
+    g.link("MEMBER_OF", "npc:mara", "faction:hearthguild")
+    g.link("TRIGGERS", "event:fair", "quest:rats")
+
+
+def test_add_and_link_reject_what_the_record_schema_forbids():
+    g = WorldStateGraph(seed=0, chunk_size=SIZE)
+    g.add_region("forest", "forest")
+    with pytest.raises(ValueError, match="Dragon"):
+        g.add("Dragon", "dragon:smaug", name="Smaug")
+    with pytest.raises(ValueError, match="'name'"):
+        g.add("NPC", "npc:pell", role="stable boy")
+    with pytest.raises(ValueError, match="'x'"):
+        g.add("Settlement", "settlement:x", name="x", x="1", y=2, biome="forest")
+    with pytest.raises(ValueError, match="'colour'"):
+        g.add("NPC", "npc:pell", name="Pell", colour="red")
+    with pytest.raises(ValueError, match="'npc:'"):
+        g.add("NPC", "person:pell", name="Pell")
+    g.add("NPC", "npc:pell", name="Pell")
+    with pytest.raises(ValueError, match="npc:pell"):
+        g.add("NPC", "npc:pell", name="Pell")
+    with pytest.raises(ValueError, match="INSTANCE_OF"):
+        g.link("INSTANCE_OF", "npc:pell", "region:forest")  # only a Tile is an INSTANCE_OF an Asset
+    with pytest.raises(ValueError, match="'dir'"):
+        g.link("ADJACENT", "region:forest", "region:forest")
+    with pytest.raises(ValueError, match="npc:ghost"):
+        g.link("KNOWS", "npc:pell", "npc:ghost")
+    with pytest.raises(ValueError, match="HAUNTS"):
+        g.link("HAUNTS", "npc:pell", "region:forest")
+    assert (
+        g.get("npc:pell").kind == "NPC" and g.get("npc:pell")["name"] == "Pell" and g.get("npc:ghost") is None
+    )
+    assert [r.id for r in g.nodes("NPC")] == ["npc:pell"] and g.neighbours("npc:pell") == []
+    assert g.nodes("Quest") == [] and g.count("NPC") == 1
+
+
+def test_json_round_trip_preserves_every_record_kind():
     g, c, _ = _filled_graph()
+    _game_records(g)
+    assert g.validate() == []
     g2 = WorldStateGraph.from_json(g.to_json())
-    assert set(g.g.nodes) == set(g2.g.nodes) and set(g.g.edges(keys=True)) == set(g2.g.edges(keys=True))
-    assert np.array_equal(g2.chunks[c.key].layout.grid, c.layout.grid) and g2.validate() == []
+    assert g2.to_json() == g.to_json() and g2.validate() == []
+    for kind in NODE_KINDS:
+        assert g2.nodes(kind) == g.nodes(kind) != []
+    assert {e["key"] for e in g2.to_json()["edges"]} == set(EDGE_KINDS)
+    assert np.array_equal(g2.chunks[c.key].layout.grid, c.layout.grid)
     assert np.allclose(g2.region_style("forest"), g.region_style("forest"))
+    assert g2.get("npc:mara")["role"] == "innkeeper"
+    assert [r.id for r in g2.neighbours("npc:mara", "KNOWS")] == ["quest:rats", "landmark:tower"]
+    assert [r.id for r in g2.neighbours("npc:mara", "CONTAINS", direction="in")] == ["settlement:emberfall"]
+    assert [r.id for r in g2.neighbours("quest:rats", direction="in")] == ["world", "npc:mara", "event:fair"]
+
+
+def test_from_json_rejects_a_record_the_schema_forbids():
+    g, _, _ = _filled_graph()
+    _game_records(g)
+    data = g.to_json()
+    del next(n for n in data["nodes"] if n["id"] == "npc:mara")["name"]
+    with pytest.raises(ValueError, match="npc:mara.*'name'"):
+        WorldStateGraph.from_json(data)
 
 
 # --- beyond the plan ---------------------------------------------------------------------------------
@@ -82,10 +166,12 @@ def test_neighbours_are_keyed_by_side_and_only_present_chunks_count():
     g.add_chunk(west, "forest")
     east = _chunk(1, 0, seed=2, neighbours={"W": west.layout})
     g.add_chunk(east, "forest")
-    assert list(g.neighbours(0, 0)) == ["E"] and g.neighbours(0, 0)["E"] is east
-    assert list(g.neighbours(1, 0)) == ["W"] and g.neighbours(5, 5) == {}
+    assert list(g.neighbour_chunks(0, 0)) == ["E"] and g.neighbour_chunks(0, 0)["E"] is east
+    assert list(g.neighbour_chunks(1, 0)) == ["W"] and g.neighbour_chunks(5, 5) == {}
     assert g.chunk(1, 0) is east and g.chunk(2, 2) is None
-    assert g.seam_violations() == 0 and g.g.has_edge("chunk:0,0", "chunk:1,0", "ADJACENT")
+    assert g.seam_violations() == 0
+    assert [r.id for r in g.neighbours("chunk:0,0", "ADJACENT")] == ["chunk:1,0"]
+    assert [r.id for r in g.neighbours("chunk:1,0", "ADJACENT")] == ["chunk:0,0"]
 
 
 def test_seam_violations_counts_forbidden_border_pairs():
@@ -108,9 +194,9 @@ def test_remove_chunk_drops_its_tiles_and_only_the_assets_no_tile_uses():
     shared = set(c.asset_ids.values()) & set(other.asset_ids.values())
     only_other = set(other.asset_ids.values()) - set(c.asset_ids.values())
     assert set(g.remove_chunk((1, 0))) == only_other
-    assert all(f"asset:{a}" in g.g for a in shared) and not any(f"asset:{a}" in g.g for a in only_other)
-    assert g.chunk(1, 0) is None and not any(n.startswith("tile:1,0,") for n in g.g.nodes)
-    assert g.validate() == [] and g.neighbours(0, 0) == {}
+    assert all(g.get(f"asset:{a}") for a in shared) and not any(g.get(f"asset:{a}") for a in only_other)
+    assert g.chunk(1, 0) is None and {(t["cx"], t["cy"]) for t in g.nodes("Tile")} == {(0, 0)}
+    assert g.validate() == [] and g.neighbour_chunks(0, 0) == {}
 
 
 def test_replacing_a_class_asset_drops_the_orphan_and_keeps_one_anchor():
@@ -118,9 +204,9 @@ def test_replacing_a_class_asset_drops_the_orphan_and_keeps_one_anchor():
     cls = next(iter(c.asset_ids))  # the first asset added: the region's STYLE_ANCHOR
     old, new = c.asset_ids[cls], _asset(cls, seed=7)
     assert g.add_asset(new, c.key, cls, coherence=0.9) == [old]
-    assert c.asset_ids[cls] == new.id and f"asset:{old}" not in g.g and g.validate() == []
-    anchors = [v for _, v, k in g.g.out_edges("region:forest", keys=True) if k == "STYLE_ANCHOR"]
-    assert anchors == [f"asset:{new.id}"] and g.g.nodes[f"asset:{new.id}"]["coherence"] == 0.9
+    assert c.asset_ids[cls] == new.id and g.get(f"asset:{old}") is None and g.validate() == []
+    anchors = g.neighbours("region:forest", "STYLE_ANCHOR")
+    assert [a.id for a in anchors] == [f"asset:{new.id}"] and anchors[0]["coherence"] == 0.9
 
 
 def test_region_style_is_an_ema_with_alpha_0_2_in_insertion_order():

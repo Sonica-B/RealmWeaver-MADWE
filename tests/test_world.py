@@ -147,7 +147,7 @@ def test_chunk_solved_against_four_neighbours_is_the_same_object_on_every_reques
     for key in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
         w.request_chunk(*key)
     mid = w.request_chunk(0, 0).chunk
-    assert mid is w.request_chunk(0, 0).chunk and set(w.graph.neighbours(0, 0)) == {"N", "E", "S", "W"}
+    assert mid is w.request_chunk(0, 0).chunk and set(w.graph.neighbour_chunks(0, 0)) == {"N", "E", "S", "W"}
     # diagonal neighbours are never constrained against each other, so a corner may keep one mismatch
     assert w.stats()["seam_violations"] <= 4 and w.graph.validate() == []
 

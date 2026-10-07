@@ -125,10 +125,12 @@ def test_write_region_adds_records_and_keeps_the_graph_valid(terrain, flow, site
     assert g.count("Region") == sum(1 for v in shares.values() if v > 0)
     assert g.count("Settlement") == len(sites) and g.count("Landmark") == len(marks) == 2
     assert g.validate() == []
-    along_roads = [
-        (u, v) for u, v, k in g.g.edges(keys=True) if k == "ADJACENT" and u.startswith("settlement:")
-    ]
-    assert len(along_roads) == 2 * len(net.roads)
+    settlements = g.nodes("Settlement")
+    assert [s["name"] for s in settlements] == [f"spike/settlement-{i}" for i in range(len(sites))]
+    assert [(s["x"], s["y"]) for s in settlements] == [(s.x, s.y) for s in sites]
+    assert sum(len(g.neighbours(s.id, "ADJACENT")) for s in settlements) == 2 * len(net.roads)
+    inside = {r.id for r in g.neighbours(node, "CONTAINS")}
+    assert inside == {s.id for s in settlements} | {m.id for m in g.nodes("Landmark")}
     again = WorldStateGraph.from_json(g.to_json())
     top = max(shares, key=shares.get)
     assert again.count("Settlement") == len(sites) and again.region(f"spike/{top}").biome == top
