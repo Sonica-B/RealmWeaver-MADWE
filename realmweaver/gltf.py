@@ -17,6 +17,9 @@ _FLOAT, _USHORT, _UINT = 5126, 5123, 5125
 _DTYPES = {5121: "<u1", _USHORT: "<u2", _UINT: "<u4", _FLOAT: "<f4"}
 _WIDTH = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}
 _ARRAY_BUFFER, _ELEMENT_ARRAY_BUFFER, _REPEAT = 34962, 34963, 10497
+_TRIANGLES = (
+    4  # the primitive mode `first_primitive` reads (and the glTF default); points, lines, strips are refused
+)
 
 
 def _rotation(yaw: float, pitch: float) -> np.ndarray:
@@ -127,11 +130,16 @@ def _accessor(doc: dict, binary: bytes, index: int) -> np.ndarray:
 
 def first_primitive(glb: bytes) -> tuple[np.ndarray, np.ndarray]:
     """Float32 [N, 3] positions and int64 [M, 3] triangles of the first mesh's first primitive; both empty when the
-    GLB holds no mesh (a skeleton-only clip)."""
+    GLB holds no mesh (a skeleton-only clip). ValueError for a primitive not drawn as a triangle list."""
     doc, binary = unpack(glb)
     if not doc.get("meshes"):
         return np.zeros((0, 3), np.float32), np.zeros((0, 3), np.int64)
     primitive = doc["meshes"][0]["primitives"][0]
+    mode = primitive.get("mode", _TRIANGLES)
+    if mode != _TRIANGLES:
+        raise ValueError(
+            f"first primitive has mode {mode}, not TRIANGLES ({_TRIANGLES}): only triangle lists are read"
+        )
     positions = _accessor(doc, binary, primitive["attributes"]["POSITION"]).astype(np.float32)
     if "indices" in primitive:
         faces = _accessor(doc, binary, primitive["indices"]).astype(np.int64).reshape(-1, 3)
@@ -165,8 +173,8 @@ def silhouette(glb: bytes, size: int, colour: tuple[int, int, int] | None = None
     normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
     shade = 0.3 + 0.7 * np.abs(normals @ _LIGHT)
     base = np.array(_GREY if colour is None else colour, np.float64)
-    # ponytail: a Python loop over faces painted far to near (painter's algorithm), fine for placeholders and
-    # previews of small props, minutes for a million-triangle mesh; a vectorised z-buffer is the upgrade path.
+    # ponytail: a Python loop over faces painted far to near (painter's algorithm), one `_fill` per triangle, so
+    # it suits placeholders and previews of small props only; a vectorised z-buffer is the upgrade path.
     for f in np.argsort(tri[:, :, 2].mean(axis=1)):
         _fill(img, xy[faces[f]], np.clip(base * shade[f], 0, 255).round().astype(np.uint8))
     return img

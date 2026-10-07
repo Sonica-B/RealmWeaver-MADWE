@@ -3,14 +3,17 @@ position, benchmark report, WebSocket ready events and the operator page. The wo
 submits at player priority and waits for the handle in the threadpool, `/player` schedules prewarm and returns at
 once, and `/generate` takes a runner slot like a chunk does, so the generator never runs on two threads it cannot
 share. Every chunk the world finishes reaches the bridge through `World.on_ready`, which encodes its assets once
-into a cache served without any lock and fans the ready event out to the WebSocket subscribers (story 24)."""
+into a cache (one lock over it, since worker and threadpool threads both fill it) and fans the ready event out to
+the WebSocket subscribers (story 24). The app's lifespan closes the world's runner on shutdown."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +39,7 @@ MAX_GENERATED = 256  # ponytail: /generate results kept resident, oldest out; th
 MAX_ENCODED = 512  # ponytail: encoded assets kept by count, oldest out; the upgrade path is a byte cap shared with the world's
 Event = dict[str, Any]
 Key = tuple[int, int]
-Listener = tuple[
+Subscriber = tuple[
     asyncio.AbstractEventLoop, asyncio.Queue[Event]
 ]  # a WebSocket subscriber's queue and its loop
 
@@ -79,13 +82,15 @@ def _adapters(
 class Bridge:
     """World, generator and subscribers behind the routes. The world is built on first use so `/health` answers
     before a diffusion model loads. `encoded` holds the bytes and media type of every asset announced through chunk
-    JSON, a ready event or `/generate`, filled by the thread that finished the chunk and served from any."""
+    JSON, a ready event or `/generate`, filled by the thread that finished the chunk and served from any; it and
+    `generated` are touched under `_cache_lock` only."""
 
     def __init__(self, world: World | None, generator: Generator | None) -> None:
         self._world, self._generator = world, world.generator if world else generator
-        self.listeners: set[Listener] = set()
+        self.subscribers: set[Subscriber] = set()
         self.generated: OrderedDict[str, Asset] = OrderedDict()
         self.encoded: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
+        self._cache_lock = threading.Lock()  # `generated` and `encoded`: worker threads and the threadpool
         self._building: asyncio.Future[None] | None = None  # event-loop state: the one lazy build under way
         self.biome = world.biome if world else settings().biome
         self.device = str(getattr(self._generator, "device", "cpu")) if self._generator else settings().device
@@ -148,13 +153,15 @@ class Bridge:
         return self.world.tick(1)
 
     def generate(self, spec: AssetSpec) -> dict[str, Any]:
-        asset = self.generated.get(spec.id)
+        with self._cache_lock:
+            asset = self.generated.get(spec.id)
         if asset is None:  # on a runner slot: the generator is never called beside a chunk's generation
             asset = self.world.runner.submit("player", lambda: self.world.generator.generate(spec)).result()
-        self.generated[spec.id] = asset
-        self.generated.move_to_end(spec.id)
-        while len(self.generated) > MAX_GENERATED:
-            self.generated.popitem(last=False)
+        with self._cache_lock:
+            self.generated[spec.id] = asset
+            self.generated.move_to_end(spec.id)
+            while len(self.generated) > MAX_GENERATED:
+                self.generated.popitem(last=False)
         payload = asset.payload  # seams are a property of pixels; a mesh or a clip reports none
         seam = tileability(payload.image) if isinstance(payload, ImagePayload) else None
         return {"id": asset.id, "latency_s": asset.latency_s, "tileability": seam}
@@ -166,14 +173,20 @@ class Bridge:
     def stats(self) -> dict[str, Any]:  # empty until the first generation builds the world
         return self.world.stats() if self.loaded else {}
 
+    def close(self) -> None:
+        """App shutdown: stop the world's runner (queued jobs cancelled, running ones finished first)."""
+        if self._world is not None:
+            self._world.close()
+
     # -- encoded assets -------------------------------------------------------------------------------------
 
     def asset_bytes(self, asset_id: str, media_type: str) -> bytes:
         """The cached encoding, else one made now (an id from a saved world is regenerated from its recorded spec).
         404 for an unknown id or an asset encoded as another media type (a mesh asked for as a PNG)."""
-        encoded = self.encoded.get(asset_id)
+        with self._cache_lock:
+            encoded = self.encoded.get(asset_id)
+            asset = None if encoded is not None else self.generated.get(asset_id)
         if encoded is None:
-            asset = self.generated.get(asset_id)
             if asset is None:
                 try:
                     asset = self.world.asset(asset_id) if self.loaded else None
@@ -188,12 +201,16 @@ class Bridge:
         return data
 
     def _encode(self, asset: Asset) -> tuple[bytes, str]:
-        """Encode once into `encoded` (assets never change) and serve from there, on whichever thread asks."""
-        encoded = self.encoded.get(asset.id)
+        """Encode once into `encoded` (assets never change) and serve from there, on whichever thread asks; the
+        encoding itself runs with the lock let go of, and the first of two racing encoders is the one kept."""
+        with self._cache_lock:
+            encoded = self.encoded.get(asset.id)
         if encoded is None:
-            encoded = self.encoded[asset.id] = asset.encode()
-            while len(self.encoded) > MAX_ENCODED:
-                self.encoded.popitem(last=False)
+            fresh = asset.encode()
+            with self._cache_lock:
+                encoded = self.encoded.setdefault(asset.id, fresh)
+                while len(self.encoded) > MAX_ENCODED:
+                    self.encoded.popitem(last=False)
         return encoded
 
     # -- the world's ready listener and the WebSocket fan-out, from any thread -------------------------------
@@ -202,20 +219,26 @@ class Bridge:
         """`World.on_ready`: on the thread that generated the chunk, encode its new assets, then announce it."""
         chunk, assets = result.chunk, dict(result.chunk.asset_ids)
         for asset_id in assets.values():
-            if asset_id not in self.encoded:
-                self._encode(self.world.asset(asset_id))
+            self._encode(self.world.asset(asset_id))
         self.broadcast(wire.ready_event(chunk, assets))
 
     def broadcast(self, event: Event) -> None:
-        for loop, queue in list(self.listeners):
+        for loop, queue in list(self.subscribers):
             loop.call_soon_threadsafe(queue.put_nowait, event)
 
 
 def create_app(world: World | None = None, generator: Generator | None = None) -> FastAPI:
     """The bridge app. Without `world`, one is built on first use around `generator` or the default adapter:
-    `DiffusionGenerator` + `DinoEmbedder` on a CUDA device, else `ProceduralGenerator` + `histogram_embed`."""
-    app = FastAPI(title="RealmWeaver bridge", docs_url=None, redoc_url=None)
+    `DiffusionGenerator` + `DinoEmbedder` on a CUDA device, else `ProceduralGenerator` + `histogram_embed`.
+    Its lifespan closes the world's runner on shutdown."""
     bridge = Bridge(world, generator)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        yield
+        await run_in_threadpool(bridge.close)  # joins the worker threads: off the event loop
+
+    app = FastAPI(title="RealmWeaver bridge", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.bridge = bridge
 
     @app.get("/")
@@ -286,8 +309,8 @@ def create_app(world: World | None = None, generator: Generator | None = None) -
     async def events(ws: WebSocket) -> None:
         await ws.accept()
         queue: asyncio.Queue[Event] = asyncio.Queue()
-        listener: Listener = (asyncio.get_running_loop(), queue)
-        bridge.listeners.add(listener)
+        subscriber: Subscriber = (asyncio.get_running_loop(), queue)
+        bridge.subscribers.add(subscriber)
         forward = asyncio.create_task(_forward(ws, queue))
         try:
             await ws.send_json({"type": "hello"})
@@ -297,7 +320,7 @@ def create_app(world: World | None = None, generator: Generator | None = None) -
             pass
         finally:
             forward.cancel()
-            bridge.listeners.discard(listener)
+            bridge.subscribers.discard(subscriber)
 
     @app.exception_handler(RuntimeError)
     async def runtime_error(request: Request, exc: RuntimeError) -> Response:

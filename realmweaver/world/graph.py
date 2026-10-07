@@ -30,12 +30,24 @@ ChunkState = Literal["pending", "draft", "ready"]
 @dataclass(frozen=True)
 class Region:
     """A contiguous set of chunks sharing one biome (the glossary's Region) as a read record: `id` is the
-    Region node's id, stable across save and load; `chunks` the keys of the chunks it CONTAINS."""
+    Region node's id, stable across save and load; `chunks` the keys of the chunks it CONTAINS; `tileset` the
+    compiled tileset its chunks are solved with (None until `add_region` or the first chunk recorded one) and
+    `coherence_threshold` the biome's, as `World` recorded it (None when it was added without one)."""
 
     id: str
     name: str
     biome: str
     chunks: frozenset[tuple[int, int]]
+    tileset: TileSet | None = None
+    coherence_threshold: float | None = None
+
+    def shares_tileset(self, other: Region) -> bool:
+        """True when both regions solve with the same tile classes and adjacency table, so a border between them
+        can be constrained; False when either has no tileset yet."""
+        a, b = self.tileset, other.tileset
+        if a is None or b is None:
+            return False
+        return a is b or (a.classes == b.classes and bool(np.array_equal(a.allowed, b.allowed)))
 
 
 def _cos(a: np.ndarray, b: np.ndarray) -> float:
@@ -72,19 +84,28 @@ class WorldStateGraph:
         self.chunks: dict[tuple[int, int], Chunk] = {}
         self._vecs: dict[str, np.ndarray] = {}  # asset id -> style vector
         self._styles: dict[str, np.ndarray] = {}  # region name -> EMA style vector
+        self._tilesets: dict[str, TileSet] = {}  # region name -> the compiled tileset its node holds as JSON
 
     # -- writes -------------------------------------------------------------------------------------------
 
-    def add_region(self, name: str, biome: str) -> None:
-        self.g.add_node(_region_node(name), kind="Region", name=name, biome=biome, style=None, tileset=None)
+    def add_region(
+        self, name: str, biome: str, tileset: TileSet | None = None, coherence_threshold: float | None = None
+    ) -> None:
+        """A region of `biome`; `tileset` (else the first chunk's) and `coherence_threshold` go on its record."""
+        self.g.add_node(
+            _region_node(name), kind="Region", name=name, biome=biome, style=None, tileset=None,
+            coherence_threshold=coherence_threshold,
+        )  # fmt: skip
         self.g.add_edge(WORLD, _region_node(name), key="CONTAINS")
+        if tileset is not None:
+            self._set_tileset(name, tileset)
 
     def add_chunk(self, chunk: Chunk, region: str) -> None:
         """Add the chunk and its tiles, with ADJACENT edges inside it and across borders to chunks already present."""
         rnode = _region_node(region)
         if rnode not in self.g:
             raise KeyError(f"unknown region {region!r}")
-        self._set_tileset(rnode, chunk.layout.tileset)
+        self._set_tileset(region, chunk.layout.tileset)
         cx, cy, n = chunk.cx, chunk.cy, chunk.layout.width
         cnode, rows = _chunk_node(cx, cy), chunk.layout.class_rows()
         self.g.add_node(
@@ -182,7 +203,15 @@ class WorldStateGraph:
             for _, v, k in self.g.out_edges(rnode, keys=True)
             if k == "CONTAINS"
         )
-        return Region(rnode, name, nodes[rnode]["biome"], frozenset(keys))
+        return Region(
+            rnode, name, nodes[rnode]["biome"], frozenset(keys),
+            tileset=self._tilesets.get(name), coherence_threshold=nodes[rnode].get("coherence_threshold"),
+        )  # fmt: skip
+
+    def region_of(self, cx: int, cy: int) -> str | None:
+        """The name of the region that CONTAINS the chunk at (cx, cy); None when the chunk is absent."""
+        chunk = self.chunks.get((cx, cy))
+        return None if chunk is None else self.g.nodes[_chunk_node(cx, cy)]["region"]
 
     def neighbours(self, cx: int, cy: int) -> dict[str, Chunk]:
         """Chunks present on each side, keyed `"N"`, `"E"`, `"S"`, `"W"` as `solve_chunk` names its neighbours."""
@@ -228,13 +257,14 @@ class WorldStateGraph:
         return sum(1 for _, d in self.g.nodes(data=True) if d.get("kind") == kind)
 
     def seam_violations(self) -> int:
-        """Cross-chunk adjacent pairs the tileset forbids (a corner cell may keep an earlier neighbour's rule)."""
+        """Cross-chunk adjacent pairs the tileset forbids (a corner cell may keep an earlier neighbour's rule); a
+        border between chunks of different tilesets has no rule to break and is not counted."""
         bad = 0
         for (cx, cy), chunk in self.chunks.items():
             allowed, grid = chunk.layout.tileset.allowed, chunk.layout.grid
             for d in (1, 2):  # E and S: each border once
                 other = self.chunks.get((cx + DIRS[d][0], cy + DIRS[d][1]))
-                if other is None:
+                if other is None or other.layout.tileset.classes != chunk.layout.tileset.classes:
                     continue
                 ours = grid[:, -1] if d == 1 else grid[-1, :]
                 theirs = other.layout.grid[:, 0] if d == 1 else other.layout.grid[0, :]
@@ -311,38 +341,43 @@ class WorldStateGraph:
     def from_json(cls, data: dict) -> WorldStateGraph:
         graph = cls.__new__(cls)
         graph.g = nx.node_link_graph(copy.deepcopy(data), directed=True, multigraph=True, edges="edges")
-        graph.chunks, graph._vecs, graph._styles = {}, {}, {}
+        graph.chunks, graph._vecs, graph._styles, graph._tilesets = {}, {}, {}, {}
         nodes = graph.g.nodes
-        for n, d in nodes(data=True):
+        for n, d in nodes(data=True):  # regions first: their chunks share the one tileset built per region
             kind = d.get("kind")
-            if kind == "Region" and d["style"] is not None:
-                graph._styles[d["name"]] = np.asarray(d["style"], dtype=np.float64)
+            if kind == "Region":
+                if d["style"] is not None:
+                    graph._styles[d["name"]] = np.asarray(d["style"], dtype=np.float64)
+                if d["tileset"] is not None:
+                    ts = d["tileset"]
+                    graph._tilesets[d["name"]] = TileSet(
+                        list(ts["classes"]), np.asarray(ts["allowed"], bool), np.asarray(ts["weights"])
+                    )
             elif kind == "Asset" and d["style"] is not None:
                 graph._vecs[n.removeprefix("asset:")] = np.asarray(d["style"], dtype=np.float64)
-            elif kind == "Chunk":
-                ts = nodes[_region_node(d["region"])]["tileset"]
-                tileset = TileSet(
-                    list(ts["classes"]), np.asarray(ts["allowed"], bool), np.asarray(ts["weights"])
-                )
-                layout = Layout(np.asarray(d["grid"], dtype=np.int32), tileset)
-                graph.chunks[(d["cx"], d["cy"])] = Chunk(
-                    d["cx"], d["cy"], d["biome"], layout, d["asset_ids"], d["state"]
-                )
+        for d in (d for _, d in nodes(data=True) if d.get("kind") == "Chunk"):
+            layout = Layout(np.asarray(d["grid"], dtype=np.int32), graph._tilesets[d["region"]])
+            graph.chunks[(d["cx"], d["cy"])] = Chunk(
+                d["cx"], d["cy"], d["biome"], layout, d["asset_ids"], d["state"]
+            )
         return graph
 
     # -- private ------------------------------------------------------------------------------------------
 
-    def _set_tileset(self, rnode: str, tileset: TileSet) -> None:
-        stored = self.g.nodes[rnode]["tileset"]
-        if stored is None:
-            self.g.nodes[rnode]["tileset"] = {
+    def _set_tileset(self, name: str, tileset: TileSet) -> None:
+        """Record the region's tileset once: its JSON on the node, the object in `_tilesets`; a later chunk's must
+        list the same classes."""
+        node = self.g.nodes[_region_node(name)]
+        if node["tileset"] is None:
+            node["tileset"] = {
                 "classes": list(tileset.classes),
                 "allowed": tileset.allowed.tolist(),
                 "weights": tileset.weights.tolist(),
             }
-        elif stored["classes"] != list(tileset.classes):
+            self._tilesets[name] = tileset
+        elif node["tileset"]["classes"] != list(tileset.classes):
             raise ValueError(
-                f"region {rnode} tileset classes {stored['classes']} != chunk's {tileset.classes}"
+                f"region {name!r} tileset classes {node['tileset']['classes']} != chunk's {tileset.classes}"
             )
 
     def _tiles_of(self, chunk_key: tuple[int, int], tile_class: str) -> list[str]:

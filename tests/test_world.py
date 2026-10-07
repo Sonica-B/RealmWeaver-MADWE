@@ -1,5 +1,6 @@
 """The `World` seam: chunks with assets, borders, persistence and prewarm on the CPU adapters."""
 
+import logging
 import threading
 import time
 
@@ -7,7 +8,10 @@ import numpy as np
 import pytest
 
 from realmweaver.assets import ProceduralGenerator
-from realmweaver.layout import violations
+from realmweaver.biomes import load_biome
+from realmweaver.layout import solve_chunk, tileset_from_example, violations
+from realmweaver.metrics import histogram_embed
+from realmweaver.types import Chunk
 from realmweaver.world import InlineRunner, ThreadRunner, World
 
 Key = tuple[int, int]
@@ -373,3 +377,135 @@ def test_inline_runner_is_the_synchronous_default(small_assets):
     with pytest.raises(RuntimeError, match="no model"):
         broken.request_chunk(0, 0)
     assert broken.chunk(0, 0) is None and broken.stats()["chunks"] == 0 and broken.stats()["in_flight"] == 0
+
+
+# --- engine evolution review: the lock is never held while generating; runner lifecycle; C3 regions ---------
+
+
+class _Probe:
+    """`Generator` adapter over the procedural one that records, per call, whether the calling thread held the
+    world lock: the generator and the embedder must always run with it let go of (world.py's contract)."""
+
+    def __init__(self) -> None:
+        self.inner, self.world, self.held = ProceduralGenerator(), None, []
+
+    def generate(self, spec):
+        self.held.append(self.world._lock_held())
+        return self.inner.generate(spec)
+
+    def embed(self, image: np.ndarray) -> np.ndarray:
+        self.held.append(self.world._lock_held())
+        return histogram_embed(image)
+
+
+@pytest.mark.parametrize(
+    "make_runner", [InlineRunner, lambda: ThreadRunner(slots=2)], ids=["inline", "thread"]
+)
+def test_generator_and_embedder_run_with_the_world_lock_let_go_of(small_assets, make_runner):
+    gen = _Probe()
+    w = World("forest", gen, gen.embed, chunk_size=8, seed=23, runner=make_runner())
+    gen.world = w
+    assert w.request_chunk(0, 0).transition == "created"  # the player's path: `submit`
+    w.observe_player(4.0, 4.0)
+    warmed, deadline = w.tick(budget=1), time.monotonic() + 30  # the prewarm path: `tick`
+    while not warmed and time.monotonic() < deadline:
+        time.sleep(0.01)
+        warmed = w.tick(budget=0)
+    w.close()
+    assert warmed and len(gen.held) >= 2 and not any(gen.held), (
+        "a generation ran on a thread holding the lock"
+    )
+
+
+def test_anchor_fallback_regenerates_loaded_assets_with_the_lock_let_go_of(small_assets, tmp_path):
+    first = World("forest", ProceduralGenerator(), chunk_size=8, seed=24)
+    ids = set(first.request_chunk(0, 0).chunk.asset_ids.values())
+    first.save(tmp_path / "world.json")
+    gen, rng = _Probe(), np.random.default_rng(0)
+
+    def noise(_image: np.ndarray) -> np.ndarray:  # far from every loaded style vector: each attempt fails
+        gen.held.append(gen.world._lock_held())
+        return rng.standard_normal(48)
+
+    w = World.load(tmp_path / "world.json", gen, noise)
+    gen.world = w
+    second = w.request_chunk(1, 0).chunk
+    assert w.stats()["fallbacks"] and ids & set(second.asset_ids.values()), "a loaded asset stood in"
+    assert w.stats()["resident_assets"] and gen.held and not any(gen.held)
+
+
+def test_thread_runner_close_cancels_queued_jobs_and_refuses_later_ones():
+    runner = ThreadRunner(slots=1)
+    gate, started = threading.Event(), threading.Event()
+
+    def blocked() -> str:
+        started.set()
+        gate.wait(timeout=10)
+        return "done"
+
+    running = runner.submit("player", blocked)
+    assert started.wait(timeout=10)
+    queued = [runner.submit("prewarm", lambda: "never") for _ in range(3)]
+    closer = threading.Thread(target=runner.close)
+    closer.start()
+    deadline = time.monotonic() + 10
+    while not all(h.cancelled() for h in queued) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert all(h.cancelled() for h in queued), "close settles what is still queued, without running it"
+    assert not running.done() and closer.is_alive(), "the job on the slot finishes first"
+    gate.set()
+    closer.join(timeout=10)
+    assert running.result(timeout=10) == "done" and not closer.is_alive()
+    late = runner.submit("player", lambda: "never")
+    assert isinstance(late.exception(timeout=1), RuntimeError) and "closed" in str(late.exception())
+    runner.close()  # a second close is nothing
+
+
+def test_cancelling_a_queued_handle_frees_its_key_and_close_refuses_new_jobs(small_assets, gated_generator):
+    gen = gated_generator
+    w = World("forest", gen, chunk_size=8, seed=25, runner=ThreadRunner(slots=1))
+    gen.gate.clear()
+    busy = w.submit(0, 0)
+    assert gen.started.wait(timeout=10), "the one slot is busy"
+    queued = w.submit(1, 0, priority="prewarm")
+    assert w.submit(1, 0) is queued and queued.cancel()
+    again = w.submit(1, 0)
+    assert again is not queued and not again.done(), "the key is free again: a new job, not the cancelled one"
+    gen.gate.set()
+    assert busy.result(timeout=30).transition == "created"
+    assert again.result(timeout=30).transition == "created" and w.stats()["chunks"] == 2
+    w.close()
+    late = w.submit(5, 5)
+    assert isinstance(late.exception(timeout=1), RuntimeError) and w.submit(5, 5) is not late
+    assert w.chunk(5, 5) is None and w.stats()["chunks"] == 2
+
+
+def test_region_at_answers_the_region_map_with_its_tileset_and_threshold(small_assets):
+    w = World("forest", ProceduralGenerator(), chunk_size=8, seed=26)
+    region = w.region_at(3, -2)  # absent chunk: the single-biome map's one region
+    assert (region.id, region.name, region.biome) == (w.region("forest").id, "forest", "forest")
+    assert region.tileset is w.tileset and region.chunks == frozenset()
+    assert region.coherence_threshold == w.threshold == load_biome("forest").coherence_threshold
+    w.request_chunk(3, -2)
+    assert w.region_at(3, -2).chunks == {(3, -2)} == w.region_at(0, 0).chunks
+    w.save("tmp_world.json")
+    loaded = World.load("tmp_world.json", ProceduralGenerator()).region_at(3, -2)
+    assert loaded.coherence_threshold == region.coherence_threshold and loaded.shares_tileset(region)
+
+
+def test_border_constraint_is_skipped_across_regions_with_different_tilesets(small_assets, caplog):
+    w = World("forest", ProceduralGenerator(), chunk_size=8, seed=27)
+    desert = load_biome("desert")
+    ts = tileset_from_example(desert.example_map, desert.legend)
+    w.graph.add_region("dunes", "desert", ts, desert.coherence_threshold)  # a second region, by hand
+    w.graph.add_chunk(Chunk(1, 0, "desert", solve_chunk(ts, 8, 1, {})), "dunes")
+    assert w.region_at(1, 0).name == "dunes" and not w.region_at(0, 0).shares_tileset(w.region_at(1, 0))
+    with caplog.at_level(logging.WARNING, logger="realmweaver.world"):
+        beside = w.request_chunk(0, 0).chunk.layout.grid  # E neighbour: the desert chunk
+        w.request_chunk(1, 1)  # N neighbour: the desert chunk again; the pair was logged already
+    alone = (
+        World("forest", ProceduralGenerator(), chunk_size=8, seed=27).request_chunk(0, 0).chunk.layout.grid
+    )
+    assert np.array_equal(beside, alone), "the desert neighbour's border was no constraint"
+    assert sum("different tilesets" in r.message for r in caplog.records) == 1, "logged once per region pair"
+    assert w.stats()["chunks"] == 3 and all(p.startswith("tile:1,0,") for p in w.graph.validate())

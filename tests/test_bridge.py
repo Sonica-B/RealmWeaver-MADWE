@@ -8,11 +8,13 @@ from whichever thread finished the chunk.
 
 from __future__ import annotations
 
+import importlib
 import io
 import json
 import re
 import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +30,7 @@ from realmweaver.world import ThreadRunner, World
 
 FIXTURE = Path(__file__).parent / "fixtures" / "chunk_example.json"
 ASSET_SIZE = 64
+_OPEN: list[World] = []  # every world a test built: closed at teardown, so no runner thread outlives its test
 
 
 @pytest.fixture(autouse=True)
@@ -35,10 +38,19 @@ def _small_assets(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REALMWEAVER_ASSET_SIZE", str(ASSET_SIZE))
 
 
+@pytest.fixture(autouse=True)
+def _close_worlds() -> Iterator[None]:
+    yield
+    while _OPEN:
+        _OPEN.pop().close()
+
+
 def _world(generator: Generator | None = None) -> World:
-    return World(
+    world = World(
         "forest", generator or ProceduralGenerator(), chunk_size=8, seed=1, runner=ThreadRunner(slots=2)
     )
+    _OPEN.append(world)
+    return world
 
 
 def _client() -> TestClient:
@@ -300,19 +312,69 @@ def test_default_world_is_built_lazily_from_the_environment(monkeypatch):
     monkeypatch.setenv("REALMWEAVER_DEVICE", "cpu")
     monkeypatch.setenv("REALMWEAVER_BIOME", "desert")
     monkeypatch.setenv("REALMWEAVER_CHUNK_SIZE", "8")
-    c = TestClient(create_app())
-    h = c.get("/health").json()
-    assert h["generator"] == "procedural" and h["device"] == "cpu" and h["loaded"] is False
-    assert c.get("/chunks").json() == [] and c.get("/health").json()["loaded"] is False
-    j = c.get("/chunk/0/0").json()
-    assert j["biome"] == "desert" and j["size"] == 8 and "sand" in j["classes"]
-    assert c.get("/health").json()["loaded"] is True
+    with TestClient(create_app()) as c:  # the lifespan closes the world the bridge builds
+        h = c.get("/health").json()
+        assert h["generator"] == "procedural" and h["device"] == "cpu" and h["loaded"] is False
+        assert c.get("/chunks").json() == [] and c.get("/health").json()["loaded"] is False
+        j = c.get("/chunk/0/0").json()
+        assert j["biome"] == "desert" and j["size"] == 8 and "sand" in j["classes"]
+        assert c.get("/health").json()["loaded"] is True
 
 
 def test_module_exposes_one_lazy_app():
     import realmweaver.bridge as bridge
 
     assert isinstance(bridge.app, FastAPI) and bridge.app is bridge.app
+
+
+def test_app_shutdown_closes_the_world_runner():
+    world = _world()
+    with TestClient(create_app(world)) as c:
+        assert c.get("/chunk/0/0").status_code == 200
+    late = world.submit(9, 9)
+    assert isinstance(late.exception(timeout=1), RuntimeError), (
+        "after shutdown a job settles with its refusal"
+    )
+    assert world.chunk(9, 9) is None
+
+
+def test_caches_survive_ready_events_from_worker_threads_while_routes_read(monkeypatch: pytest.MonkeyPatch):
+    """`_ready` encodes on the world's worker threads while `/asset` and `/generate` read, fill and evict in the
+    threadpool: one lock keeps the two caches consistent. A smoke test over many interleavings, with the caps
+    set so low that every fill evicts."""
+    bridge_app = importlib.import_module(
+        "realmweaver.bridge.app"
+    )  # the package's `app` is the FastAPI instance
+    monkeypatch.setattr(bridge_app, "MAX_ENCODED", 2)
+    monkeypatch.setattr(bridge_app, "MAX_GENERATED", 2)
+    c = _client()
+    ids = list(c.get("/chunk/0/0").json()["assets"].values())
+    failures: list[Exception] = []
+    codes: list[int] = []
+
+    def chunks(cy: int) -> None:  # ready events, and so `_ready`'s encodes, come from the worker threads
+        try:
+            for cx in range(1, 5):
+                codes.append(c.get(f"/chunk/{cx}/{cy}").status_code)
+        except Exception as exc:  # whatever the race raised is the finding
+            failures.append(exc)
+
+    def assets() -> None:
+        try:
+            for round_ in range(15):
+                codes.extend(c.get(f"/asset/{i}.png").status_code for i in ids)
+                body = {"biome": "forest", "subject": "rock", "size": ASSET_SIZE, "seed": round_ % 3}
+                codes.append(c.post("/generate", json=body).status_code)
+        except Exception as exc:
+            failures.append(exc)
+
+    threads = [threading.Thread(target=chunks, args=(cy,)) for cy in (1, 2)]
+    threads += [threading.Thread(target=assets) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60)
+    assert not failures and not any(t.is_alive() for t in threads) and set(codes) == {200}
 
 
 def test_operator_page_is_self_contained():

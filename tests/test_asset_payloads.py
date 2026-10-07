@@ -34,6 +34,23 @@ def _glb(data: bytes) -> tuple[dict, bytes]:
     return json.loads(chunks[b"JSON"]), chunks[b"BIN\x00"]
 
 
+def _pack(doc: dict, binary: bytes) -> bytes:
+    """A GLB from its parts, by the container spec: header, space-padded JSON chunk, zero-padded BIN chunk."""
+    text = json.dumps(doc).encode()
+    text += b" " * (-len(text) % 4)
+    body = (
+        struct.pack("<I4s", len(text), b"JSON") + text + struct.pack("<I4s", len(binary), b"BIN\x00") + binary
+    )
+    return struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body
+
+
+def _accessor_values(doc: dict, binary: bytes, index: int, width: int) -> np.ndarray:
+    acc = doc["accessors"][index]
+    view = doc["bufferViews"][acc["bufferView"]]
+    start = view.get("byteOffset", 0) + acc.get("byteOffset", 0)
+    return np.frombuffer(binary, "<f4", acc["count"] * width, start).reshape(-1, width)
+
+
 def _texture(size: int = 32, seed: int = 1) -> Asset:
     return ProceduralGenerator().generate(AssetSpec("forest", subject="grass", size=size, seed=seed))
 
@@ -179,11 +196,27 @@ def test_procedural_mesh_is_one_textured_cube_primitive_in_a_valid_glb():
     )  # four vertices per face: one texture per face
     assert position["min"] == [-0.5] * 3 and position["max"] == [0.5] * 3
     assert doc["accessors"][prim["indices"]]["count"] == 36
-    view = doc["bufferViews"][position["bufferView"]]
-    start = view.get("byteOffset", 0) + position.get("byteOffset", 0)
-    corners = np.frombuffer(binary, "<f4", 24 * 3, start).reshape(24, 3)
+    corners = _accessor_values(doc, binary, prim["attributes"]["POSITION"], 3)
     expected = {(x, y, z) for x in (-0.5, 0.5) for y in (-0.5, 0.5) for z in (-0.5, 0.5)}
     assert {tuple(map(float, v)) for v in corners} == expected
+    assert prim.get("mode", 4) == 4, "TRIANGLES: the one mode the package reads back"
+    uvs = _accessor_values(doc, binary, prim["attributes"]["TEXCOORD_0"], 2).reshape(6, 4, 2)
+    unit_square = {(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)}
+    assert all({tuple(map(float, p)) for p in face} == unit_square for face in uvs), (
+        "each face covers the texture"
+    )
+
+
+def test_non_triangle_primitives_are_refused_by_name():
+    from realmweaver import gltf
+
+    doc, binary = _glb(_mesh(8).payload.glb_bytes)
+    doc["meshes"][0]["primitives"][0]["mode"] = 1  # LINES
+    lines = _pack(doc, binary)
+    with pytest.raises(ValueError, match="TRIANGLES"):
+        gltf.first_primitive(lines)
+    with pytest.raises(ValueError, match="TRIANGLES"):
+        MeshPayload(lines, triangles=0, watertight=False).preview(8)
 
 
 def test_procedural_cube_wears_its_subjects_texture():
