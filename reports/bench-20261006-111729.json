@@ -1,0 +1,61 @@
+{
+ "schema": 1,
+ "timestamp": "2026-10-06T11:17:29+00:00",
+ "env": {
+  "python": "3.12.3",
+  "torch": "2.11.0+cu128",
+  "diffusers": "0.41.0",
+  "gpu": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+  "vram_gb": 11.94000244140625,
+  "generator": "DiffusionGenerator"
+ },
+ "params": {
+  "n": 10,
+  "seed": 0,
+  "biomes": [
+   "forest"
+  ],
+  "size": 512,
+  "steps": 4
+ },
+ "latency_s": {
+  "p50": 0.35016024699962145,
+  "p95": 0.37808027699975355,
+  "mean": 0.35494981719966745
+ },
+ "assets_per_min": 169.0203925385908,
+ "tileability": {
+  "mean_ratio": 1.029753816127777,
+  "share_leq_1_2": 1.0
+ },
+ "tiling_score_mean": 0.13113953340798618,
+ "style_consistency": 0.32229308297135184,
+ "vram": {
+  "peak_allocated_gb": 3.089111804962158,
+  "peak_reserved_gb": 3.71875
+ },
+ "allocator": null,
+ "fid_kid": null,
+ "wfc_ms_per_chunk": 19.859488849942863,
+ "predictor": {
+  "markov_hit_rate": 0.987012987012987,
+  "ring_hit_rate": 0.5616883116883117,
+  "seeds": 20
+ },
+ "targets_2025": {
+  "fid": 32.4,
+  "s_per_asset": 2.7,
+  "textures_per_min": 120,
+  "tileable_pct": 94,
+  "style": 0.89,
+  "vram_gb": 6.2
+ },
+ "notes": [
+  "fid_kid reference set: data/raw/textures (240 SDXL-Turbo textures from the 2025 repo, the only one available); FID is biased at small n, KID (subset mean, std) is the unbiased statistic, its std degenerate to 0 while n is at or below the subset size; neither is a ground-truth style target",
+  "latency_s: the generator's per-asset time over 10 draft seamless textures after 3 uncounted warm-ups; assets_per_min: textures / wall-clock of that loop",
+  "tileability: wrapped-seam over interior gradient ratio, 1.0 = seamless; share_leq_1_2: share at or below 1.2; tiling_score_mean: Tiled-Diffusion seam score, lower is better",
+  "wfc_ms_per_chunk: mean wall ms per 16x16 solve, 20 seeds per biome",
+  "predictor: top-3 hit-rate over 20 synthetic walks of 400 steps, heading noise sd 0.25; the ring baseline takes its first 3 neighbours",
+  "targets_2025 are the 2025 pitch numbers, not measurements"
+ ]
+}

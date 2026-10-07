@@ -1,0 +1,13 @@
+services:
+  realmweaver:
+    build: .
+    image: realmweaver:gpu
+    ports: ["8008:8008"]
+    environment:
+      - HF_TOKEN
+    volumes:
+      - ${HF_HOME_HOST:-~/.cache/huggingface}:/hf
+      - ./reports:/app/reports
+      - ./data:/app/data
+      - ./models:/app/models
+    gpus: all

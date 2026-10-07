@@ -1,0 +1,23 @@
+{
+    "name": "RealmWeaver.Client",
+    "rootNamespace": "RealmWeaver.Client",
+    "references": [
+        "endel.nativewebsocket",
+        "colyseus.nativewebsocket"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.endel.nativewebsocket",
+            "expression": "1.0.0",
+            "define": "REALMWEAVER_WS"
+        }
+    ],
+    "noEngineReferences": false
+}

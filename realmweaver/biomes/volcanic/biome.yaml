@@ -1,0 +1,30 @@
+name: volcanic
+style: "top-down 2D game texture, painterly fantasy volcanic wasteland, hot orange underglow, drifting embers, rich detail"
+negative: "blurry, text, watermark, border, frame, seam, low quality, photo"
+coherence_threshold: 0.55
+lora: null
+legend: {b: basalt, l: lava, c: cooled_lava, a: ash, o: obsidian, v: vent}
+tiles:
+  basalt:      {prompt: "dark cracked basalt ground with hexagonal columns", palette: ["#3a3a3f", "#4d4d54", "#26262a"]}
+  lava:        {prompt: "molten glowing lava with bright orange cracks and dark crust", palette: ["#ff6a1a", "#ffb03b", "#c8330c"]}
+  cooled_lava: {prompt: "ropey cooled lava crust with faint red glow in the cracks", palette: ["#5a2e26", "#7a3d30", "#3e1f19"]}
+  ash:         {prompt: "soft grey volcanic ash field with scattered cinders", palette: ["#8c8a85", "#a7a5a0", "#6e6c68"]}
+  obsidian:    {prompt: "jagged glossy black obsidian shards", palette: ["#15131a", "#2b2735", "#0a090d"]}
+  vent:        {prompt: "sulphur-stained steam vent crater with yellow deposits", palette: ["#b89a3a", "#d4b84f", "#8a7228"]}
+props:
+  ember_rock: "a glowing ember-cracked rock, game prop, centered, white background"
+  charred_tree: "a charred dead tree, game prop, centered, white background"
+  bone_pile: "a pile of blackened bones, game prop, centered, white background"
+map: |
+  bbbbbbbbbaab
+  bobbbbbbbaab
+  bbbccccbbaab
+  bbcclllccbbb
+  bccllllllcbb
+  bcllllllllcb
+  bccllllllcbb
+  bbcclllccbvb
+  bbbbccccbbbb
+  oobbbbbbbbob
+  oobaaabvbooo
+  obbbbbbbbboo

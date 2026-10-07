@@ -1,0 +1,30 @@
+name: underwater
+style: "top-down 2D game texture, painterly fantasy sea floor, caustic light patterns dancing through water, rich detail"
+negative: "blurry, text, watermark, border, frame, seam, low quality, photo"
+coherence_threshold: 0.55
+lora: null
+legend: {s: sand, c: coral, k: kelp, d: deep_water, r: rock, a: anemone}
+tiles:
+  sand:       {prompt: "pale sea floor sand with current ripples and seashell fragments", palette: ["#c9b98a", "#dccda2", "#a9986c"]}
+  coral:      {prompt: "vibrant reef of brain coral and staghorn coral in pink and orange", palette: ["#e06a7c", "#f28c6a", "#b34a5e"]}
+  kelp:       {prompt: "dense swaying giant kelp fronds seen from above", palette: ["#3f6b2f", "#5a8a3c", "#2b4a20"]}
+  deep_water: {prompt: "dark blue abyssal trench water fading to black", palette: ["#0f3357", "#174a78", "#081f38"]}
+  rock:       {prompt: "barnacle-crusted grey sea rock ledge", palette: ["#6b7178", "#878d94", "#4f555b"]}
+  anemone:    {prompt: "cluster of purple and green sea anemones with waving tentacles", palette: ["#8a5fc2", "#a983d6", "#6a42a0"]}
+props:
+  treasure_chest: "a sunken wooden treasure chest, game prop, centered, white background"
+  starfish: "an orange starfish, game prop, centered, white background"
+  anchor: "a rusted ship anchor, game prop, centered, white background"
+map: |
+  sskkssssscss
+  skkkssrrrsss
+  sskssrrddrss
+  ssssrrdddrrs
+  ssssrddddrss
+  sccsrrdddrss
+  scacsrrddrss
+  sccsssrrrrss
+  ssssssssssas
+  kksssccccsss
+  kkkssccacsss
+  skkssscccsss

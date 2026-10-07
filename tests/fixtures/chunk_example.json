@@ -1,0 +1,47 @@
+{
+  "cx": 0,
+  "cy": 0,
+  "biome": "forest",
+  "size": 4,
+  "state": "ready",
+  "tiles": [
+    ["tree", "grass", "grass", "grass"],
+    ["grass", "grass", "dirt", "grass"],
+    ["grass", "shore", "water", "shore"],
+    ["grass", "grass", "shore", "grass"]
+  ],
+  "assets": {
+    "grass": "b47d7ceb24ef4926",
+    "dirt": "54f18258010440bb",
+    "water": "fedafe87002de774",
+    "shore": "3780d90c487c1e81",
+    "tree": "9a19adfcd8701024",
+    "rock": "021cfaa08c2bd809"
+  },
+  "prefabs": {
+    "grass": "Prefab_grass",
+    "dirt": "Prefab_dirt",
+    "water": "Prefab_water",
+    "shore": "Prefab_shore",
+    "tree": "Prefab_tree",
+    "rock": "Prefab_rock"
+  },
+  "classes": ["grass", "dirt", "water", "shore", "tree", "rock"],
+  "tilesFlat": [4, 0, 0, 0, 0, 0, 1, 0, 0, 3, 2, 3, 0, 0, 3, 0],
+  "assetList": [
+    {"k": "grass", "v": "b47d7ceb24ef4926"},
+    {"k": "dirt", "v": "54f18258010440bb"},
+    {"k": "water", "v": "fedafe87002de774"},
+    {"k": "shore", "v": "3780d90c487c1e81"},
+    {"k": "tree", "v": "9a19adfcd8701024"},
+    {"k": "rock", "v": "021cfaa08c2bd809"}
+  ],
+  "prefabList": [
+    {"k": "grass", "v": "Prefab_grass"},
+    {"k": "dirt", "v": "Prefab_dirt"},
+    {"k": "water", "v": "Prefab_water"},
+    {"k": "shore", "v": "Prefab_shore"},
+    {"k": "tree", "v": "Prefab_tree"},
+    {"k": "rock", "v": "Prefab_rock"}
+  ]
+}

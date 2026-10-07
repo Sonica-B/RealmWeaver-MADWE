@@ -1,0 +1,30 @@
+name: desert
+style: "top-down 2D game texture, painterly fantasy desert, harsh warm sunlight, long shadows, rich detail"
+negative: "blurry, text, watermark, border, frame, seam, low quality, photo"
+coherence_threshold: 0.55
+lora: null
+legend: {s: sand, d: dune, r: rock, w: water, h: shore, c: cactus}
+tiles:
+  sand:   {prompt: "fine wind-rippled desert sand with scattered pebbles", palette: ["#d9b56c", "#e8c882", "#c49c55"]}
+  dune:   {prompt: "tall sculpted sand dune with sharp crests and deep shadows", palette: ["#c9a257", "#e0bd74", "#a8813f"]}
+  rock:   {prompt: "cracked sun-bleached sandstone boulders", palette: ["#9c6f4a", "#b58a62", "#7a5235"]}
+  water:  {prompt: "still turquoise oasis water with bright reflections", palette: ["#2f9c9e", "#4cc0bf", "#237a7c"]}
+  shore:  {prompt: "wet dark sand oasis edge with reeds and small stones", palette: ["#a88f5f", "#8c7347", "#c4ac7a"]}
+  cactus: {prompt: "dry desert scrub with cacti and tufts of grass seen from above", palette: ["#6f8f4a", "#8ba85c", "#4f6a33"]}
+props:
+  skull: "a bleached animal skull half buried in sand, game prop, centered, white background"
+  palm: "a small desert palm tree, game prop, centered, white background"
+  barrel_cactus: "a round barrel cactus with yellow flowers, game prop, centered, white background"
+map: |
+  ddddssssscss
+  ddddssssssss
+  dddssshhhsss
+  ddssshwwwhss
+  ssssshwwwhss
+  scsshwwwwhss
+  ssssshwwwhsc
+  sssssshhhsss
+  ssrrssssssss
+  srrrsscsssdd
+  srrsssssssdd
+  ssssssssssdd
