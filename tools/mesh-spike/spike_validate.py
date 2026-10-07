@@ -72,7 +72,9 @@ def validate(path):
         }
         out["metallicFactor"] = getattr(mat, "metallicFactor", None)
         out["roughnessFactor"] = getattr(mat, "roughnessFactor", None)
-    out["has_vertex_normals"] = bool(raw.vertex_normals is not None and len(raw.vertex_normals) == len(raw.vertices))
+    out["has_vertex_normals"] = bool(
+        raw.vertex_normals is not None and len(raw.vertex_normals) == len(raw.vertices)
+    )
     return out
 
 

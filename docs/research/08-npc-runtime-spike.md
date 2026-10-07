@@ -291,6 +291,11 @@ Your reply (one JSON object):
 
 ## Appendix B — the harness (`npc_spike.py`, run from the repo root with `uv run`)
 
+The harness is committed as `tools/npc-spike/npc_spike.py`, with the five personas and the authored facts it
+measures against beside it in `tools/npc-spike/personas.py` (they left the library when the runtime's fixtures
+and grammar path were removed); that copy follows the runtime's current interface and is the one to re-run. The
+listing below is the version that produced the numbers above.
+
 <details>
 <summary>npc_spike.py (297 lines)</summary>
 

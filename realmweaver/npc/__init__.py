@@ -1,4 +1,7 @@
-"""NPC agent runtime (E7): personas, memory stream, JSON actions, grounding verifier and local LLM adapters."""
+"""NPC agent runtime (E7): personas, memory stream, action schema, grounding verifier and local LLM adapters.
+
+`NpcRuntime(llm, facts)` runs one dialogue turn; `facts_for` reads a region's facts from the world state graph;
+`FakeLlm` and `LocalLlm` are the two `Callable[[str], str]` adapters it accepts."""
 
 from realmweaver.npc.actions import (
     Action,
@@ -12,27 +15,20 @@ from realmweaver.npc.actions import (
     action_schema,
     parse_action,
 )
-from realmweaver.npc.llm_local import FakeLlm, LlmCall, LocalLlm, load_local_llm
+from realmweaver.npc.grounding import Fact, Knowledge, facts_for, verify_grounding
+from realmweaver.npc.llm_local import FakeLlm, LocalLlm, load_local_llm
 from realmweaver.npc.memory import Memory, MemoryStream
-from realmweaver.npc.persona import Persona, ScheduleBlock, sample_facts, sample_personas, schedule_for
-from realmweaver.npc.runtime import (
-    Knowledge,
-    NpcRuntime,
-    TurnRecord,
-    build_prompt,
-    facts_from_graph,
-    unknown_names,
-    verify_grounding,
-)
+from realmweaver.npc.persona import Persona, ScheduleBlock
+from realmweaver.npc.runtime import NpcRuntime, TurnRecord
 
 __all__ = [
     "Action",
     "ActionError",
     "End",
+    "Fact",
     "FakeLlm",
     "Give",
     "Knowledge",
-    "LlmCall",
     "LocalLlm",
     "Memory",
     "MemoryStream",
@@ -45,13 +41,8 @@ __all__ = [
     "ScheduleBlock",
     "TurnRecord",
     "action_schema",
-    "build_prompt",
-    "facts_from_graph",
+    "facts_for",
     "load_local_llm",
     "parse_action",
-    "sample_facts",
-    "sample_personas",
-    "schedule_for",
-    "unknown_names",
     "verify_grounding",
 ]

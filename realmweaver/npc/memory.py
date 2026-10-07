@@ -102,9 +102,11 @@ class MemoryStream:
         return memory
 
     def reflect(self, t: float) -> Memory:
-        """Fold the observations since the last reflection into one high-importance reflection memory."""
+        """Fold the NPC's own observations since the last reflection (what it saw and said, never what the player
+        said: a reflection is a trusted `self` memory, so player speech must not launder into one) into one
+        high-importance reflection memory."""
         since = self.memories[len(self.memories) - self._since_reflection :]
-        recent = [m for m in since if m.kind == "observation"]
+        recent = [m for m in since if m.kind == "observation" and m.source != "player"]
         texts = [m.text for m in sorted(recent, key=lambda m: m.importance, reverse=True)[:5]]
         importance = max((m.importance for m in recent), default=_BASE_IMPORTANCE)
         reflection = Memory(

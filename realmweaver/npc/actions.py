@@ -68,7 +68,7 @@ _ADAPTER: TypeAdapter[Action] = TypeAdapter(Action)
 
 
 def action_schema() -> dict:
-    """JSON schema of the action union, for grammar-constrained decoding and for the prompt."""
+    """JSON schema of the action union: the action schema the engine side validates against."""
     return _ADAPTER.json_schema()
 
 
@@ -98,8 +98,3 @@ def parse_action(raw: str) -> Action:
             f"{'.'.join(str(p) for p in err['loc']) or 'action'}: {err['msg']}" for err in e.errors()
         )
         raise ActionError(f"invalid action ({problems})") from None
-
-
-def action_text(action: Action) -> str:
-    """What the player hears for the action (empty for a silent `give`, `report_crime` or `end`)."""
-    return action.text

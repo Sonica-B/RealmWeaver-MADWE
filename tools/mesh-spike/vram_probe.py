@@ -44,7 +44,13 @@ class VRAMPeakReset:
 class VRAMPeakReport:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"value": (ANY,), "tag": ("STRING", {"default": "run"}), "path": ("STRING", {"default": ""})}}
+        return {
+            "required": {
+                "value": (ANY,),
+                "tag": ("STRING", {"default": "run"}),
+                "path": ("STRING", {"default": ""}),
+            }
+        }
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("report",)
@@ -75,4 +81,7 @@ class VRAMPeakReport:
 _STATE: dict = {}
 
 NODE_CLASS_MAPPINGS = {"VRAMPeakReset": VRAMPeakReset, "VRAMPeakReport": VRAMPeakReport}
-NODE_DISPLAY_NAME_MAPPINGS = {"VRAMPeakReset": "VRAM Peak Reset (spike)", "VRAMPeakReport": "VRAM Peak Report (spike)"}
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "VRAMPeakReset": "VRAM Peak Reset (spike)",
+    "VRAMPeakReport": "VRAM Peak Report (spike)",
+}
