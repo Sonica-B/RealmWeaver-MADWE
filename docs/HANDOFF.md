@@ -1,24 +1,24 @@
-# Handoff (2026-10-06, end of session 1)
+# Handoff (2026-10-06, end of day)
 
-Branch `feat/mvp-2026`, PR against `main`. Everything in the plan (`docs/superpowers/plans/2026-10-06-realmweaver-mvp.md`, Tasks 0–9) is implemented, reviewed on two axes (`docs/review/`), fixed, and measured.
+Branch `feat/mvp-2026`, PR #4 against `main` (Auto-fix on). Two bodies of work sit on the branch:
 
-## State
-- CPU suite: 150 tests (~20 s), `REALMWEAVER_DEVICE=cpu uv run pytest -q -m "not gpu"`; GPU suite: 11 tests, `uv run pytest -q -m gpu`.
-- Latest benchmark on the shipped code: `reports/bench-20261006-045936.json` (n=100, six biomes); README "Measured" table is generated from it by `tools/report_table.py --write` (picks the newest report by its own timestamp).
-- Docker: `docker compose build` then `docker compose run --rm realmweaver realmweaver bench --n 10 --biomes forest` ran on the GPU inside the container (`reports/bench-20261006-111729.json`, UTC clock).
-- Operator page verified in a browser (generate, chunk request, prewarm, events) — `docs/images/operator-page.png`.
-- Forest biome LoRA trained once (200 steps, 71 s) to prove `realmweaver train-lora`; weights live under `models/` (gitignored).
+## 1. RealmWeaver MVP (done)
+150+ CPU and 11 GPU tests, measured benchmark `reports/bench-20261006-045936.json`, Docker GPU path verified, operator page verified. See `README.md` (generated Measured table) and the earlier sections of this file's history in git.
 
-## Known limits (honest)
-- FID (265.6) is against the repo's own 240 non-tileable SDXL-Turbo textures — not comparable to the 2025 pitch figure; KID 0.039 is the usable statistic.
-- Style consistency 0.097 is the within-minus-cross-biome DINO cosine; DINO features follow tile class more than biome, so the number is small by construction.
-- Tileable share 80% at the strict 1.2 seam ratio (mean ratio ~1.06); the quality tier (FLUX.2-klein) is designed behind the `Generator` seam but not wired.
-- Prewarm runs synchronously inside `World.tick`; the bridge moves it to a background worker that yields to player requests.
-- Unity package was reviewed against Unity 6.3 docs and protocol-tested from Python; it has not been compiled in an Editor (none on this machine).
+## 2. Emberfall: Crimson-Desert-like open-world action RPG (planning + Phase 0 done)
+- Plan: `docs/superpowers/specs/2026-10-06-emberfall-game-design.md` (pillars, scope tiers M0–M4, 16 epics covering all 127 Crimson Desert systems, architecture, risks, testing). Research: `docs/research/06` (Crimson Desert), `07` (2026 stack), `08` (NPC runtime spike), `09` (TRELLIS.2 mesh spike), `10` (licence audit), `11` (spec tiers), `12` (terrain spike).
+- Tracker: GitHub Issues — spec #5 (`ready-for-agent`), wayfinder map #6 with 16 epics (#7–#22) and decision tickets (#23–#35). Resolved today: #29 mesh spike, #30 terrain spike, #31 NPC runtime spike, #32 payload-typed Asset, #34 spec tiers, #35 licence audit. Open frontier: #23 engine choice (owner), #26 character/regions (owner), then #25/#27/#28/#33/#24.
+- Engine evolution landed (architecture review order): C1 payload-typed Asset, C3 World behind a region map, C5 Runner seam + thin bridge, C8 one wire module (`realmweaver wire --write` regenerates the Unity DTO block and README contract). C4 record-driven graph in progress at the time of writing; C6 (Biome record) and C7 (geometry from World) held.
+- New packages: `realmweaver/npc` (personas, memory stream, JSON actions, grounding verifier, local LLM adapter; measured 0.38 s/turn with Qwen3-4B Q4 via llama.cpp), `realmweaver/terrain` (heightmap sources, rivers/roads/biomes/settlements post-pass, graph writer; real model ran: 1024² tile in 0.2 s warm), `realmweaver/gltf.py`, `realmweaver/wire.py`. Spike tooling in `tools/`; external installs at `D:\tools\ComfyUI` (TRELLIS.2) and `D:\tools\terrain-diffusion` (own venvs).
+- Licence consequences already applied to the plan: HY-Motion and Hunyuan3D excluded; SPAR3D placeholder-only; TRELLIS.2 with BiRefNet instead of RMBG-2.0; Hyper-SD files allowlisted by name.
 
-## Owner actions
-- Revoke the Hugging Face token in pushed history (commit `5636a3e`; see `docs/research/00-codebase-audit.md` §6). History rewrite only on explicit request.
-- Merge the PR when satisfied; CI runs ruff + CPU tests + a secret scan on Linux.
+## Owner actions (blocking the next phase)
+1. Decide the engine (#23): Unreal 5.8 two-week spike (recommended) or Unity 6.3 (keeps the shipped client). Both need an account the agent cannot create; then do #33 (engine account + empty project).
+2. Decide the playable character and the five regions (#26); art direction (#25) and the chapter outline (#27) follow.
+3. Cloud GPU budget (#24) for 1024³ meshes.
+4. Revoke the Hugging Face token in history (`5636a3e`).
 
 ## If resuming work
-Next candidates, in order of value: wire `KleinGenerator` (FLUX.2-klein-4B, Apache-2.0) behind the seam and A/B it in the bench; compile the Unity package in Unity 6.3 and record frame times; raise tileable share by gating refine-tier regeneration on the seam ratio.
+- Verify `REALMWEAVER_DEVICE=cpu uv run pytest -q -m "not gpu" -o addopts=""` is green and `git status` is clean; commit anything an interrupted agent left (check `docs/research/`, `realmweaver/world/records.py` for C4).
+- Next engine tasks without an engine: C4 if unfinished, C6 Biome record, mesh post-processing as a batch job with BiRefNet matting (E2), priority-flood depression filling in terrain (E3), NPC runtime served by `llama-server` as a sidecar with the latency budget (E7), content-studio approval queues with provenance (E13/E14).
+- Once the engine exists: E4 client foundation (streaming cells, bridge v2 WebSocket client, save/load), then the M1 vertical slice per spec #5.
